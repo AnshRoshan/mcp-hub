@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["web/index.html"],
+  // public/ is Vite build output, not source. scripts/test-upstream.mjs is a
+  // manual fixture server for testing upstream connections (not part of the app).
+  "ignorePatterns": ["public/**", "scripts/test-upstream.mjs"],
+  // Build-time tooling imported by source: tailwindcss (vite build step) and the
+  // theme package's CSS that index.css imports directly.
+  "ignoreDependencies": ["tailwindcss", "@astryxdesign/theme-neutral"],
+  "ignoreUnresolvedImports": ["@astryxdesign/theme-neutral/theme.css"],
+  "duplicates": {
+    "mode": "mild",
+    "minTokens": 50,
+    "minLines": 5,
+    "threshold": 10
+  }
+}

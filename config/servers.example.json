@@ -1,0 +1,21 @@
+{
+  "_readme": "Copy to config/servers.json. Each entry is an extra MCP server the workstation connects to and proxies. Tools appear namespaced as <key>_<tool> (e.g. myfiles_read_file). Entries with enabled:false are ignored. Missing/unhealthy servers are reported in workstation_status instead of crashing.",
+  "servers": [
+    {
+      "key": "myfiles",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/path/to/some/folder"],
+      "enabled": false
+    },
+    {
+      "key": "remote",
+      "type": "http",
+      "url": "https://your-mcp-server.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      },
+      "enabled": false
+    }
+  ]
+}

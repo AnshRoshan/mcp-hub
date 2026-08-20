@@ -1,0 +1,64 @@
+{
+  "name": "mcp-workstation",
+  "version": "0.1.0",
+  "description": "One MCP endpoint that aggregates many MCP servers plus a dense set of built-in tools — your whole workstation behind a single connection.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-workstation": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "lint:dead": "fallow",
+    "lint:dead:audit": "fallow audit",
+    "build": "tsc",
+    "build:web": "vite build --config web/vite.config.ts",
+    "typecheck:web": "tsc -p web/tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node scripts/smoke.mjs",
+    "test:integrations": "node scripts/smoke-ghjira.mjs",
+    "test:platform": "npm run build && node scripts/smoke-platform.mjs",
+    "stdio": "node dist/index.js --stdio"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "aggregator",
+    "gateway",
+    "proxy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@astryxdesign/core": "^0.4.3",
+    "@astryxdesign/theme-neutral": "^0.4.3",
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@stylexjs/stylex": "^0.19.0",
+    "better-auth": "^1.6.29",
+    "dotenv": "^17.4.2",
+    "lucide-react": "^1.31.0",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "fallow": "^3.17.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-15T00:00:00.000Z",
+  "title": "Design System: MCP Workstation",
+  "extensions": {
+    "colorMeta": {
+      "field": { "role": "neutral", "displayName": "Field Black", "canonical": "#0a0b0d", "tonalRamp": ["#050607", "#0a0b0d", "#101216", "#14171c", "#1a1e24", "#23272e", "#2f343d", "#767c86"] },
+      "panel": { "role": "neutral", "displayName": "Panel Metal", "canonical": "#101216", "tonalRamp": ["#07080a", "#0d0f12", "#101216", "#14171c", "#1a1e24", "#23272e", "#2f343d", "#767c86"] },
+      "seam": { "role": "neutral", "displayName": "Seam", "canonical": "#23272e", "tonalRamp": ["#111318", "#16181e", "#1a1e24", "#1f2329", "#23272e", "#2a2f37", "#343a43", "#767c86"] },
+      "flap": { "role": "neutral", "displayName": "Flap White", "canonical": "#ece8e1", "tonalRamp": ["#5a564f", "#78736a", "#97917f", "#b6b0a3", "#cfcabd", "#e0dbd0", "#ece8e1", "#f7f4ef"] },
+      "amber": { "role": "primary", "displayName": "Lamp Amber", "canonical": "#e8a33d", "tonalRamp": ["#4d3410", "#6d4b18", "#8f6420", "#b17c28", "#d39131", "#e8a33d", "#f5b95f", "#ffd79b"] },
+      "green": { "role": "secondary", "displayName": "Signal Green", "canonical": "#6fbf73", "tonalRamp": ["#1d3d20", "#2a562e", "#38703d", "#468a4c", "#54a45b", "#6fbf73", "#8ed491", "#b5e6b7"] },
+      "red": { "role": "tertiary", "displayName": "Anomaly Red", "canonical": "#d0655f", "tonalRamp": ["#451f1c", "#612b28", "#7d3834", "#994541", "#b5524d", "#d0655f", "#e08a85", "#f0b7b4"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "View titles, panel headings, stat values — Archivo grotesk, tabular numerals for readouts." },
+      "body": { "displayName": "Body", "purpose": "Content and item bodies, max 72ch." },
+      "label": { "displayName": "Label", "purpose": "Micro-cap captions: stat labels, panel notes." },
+      "mono": { "displayName": "Mono", "purpose": "Route codes, counts, endpoints, tokens, code — the code register only." }
+    },
+    "shadows": [
+      { "name": "modal-overlay", "value": "0 24px 64px rgba(0, 0, 0, 0.55)", "purpose": "The system's ONLY shadow — modal separation from the backdrop. Shadow-only, no border (The Seam Rule)." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Default easing for state transitions." },
+      { "name": "flap", "value": "rotateX flip 420ms with mid-fold opacity dip", "purpose": "The single authored motion: readouts flip on value change, never glide." },
+      { "name": "deploy", "value": "200ms ease with 24ms per-row stagger", "purpose": "Stepped deployment of tool lists — flaps fall in order." },
+      { "name": "reduced-motion", "value": "all animation collapsed to 0.01ms", "purpose": "prefers-reduced-motion respects the flip and deploy." }
+    ],
+    "breakpoints": [
+      { "name": "tablet", "value": "1020px" },
+      { "name": "drawer", "value": "820px" },
+      { "name": "phone", "value": "560px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The board's single primary action — an amber tab.",
+      "html": "<button class=\"ds-btn-primary\">Open connect guide</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 2px; background: #e8a33d; color: #0a0b0d; font-family: Archivo, sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; border: 0; transition: background 160ms cubic-bezier(0.22,1,0.36,1); } .ds-btn-primary:hover { background: #f5b95f; } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action — a hairline-seamed tab.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 2px; background: transparent; color: #a7abb3; font-family: Archivo, sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; border: 1px solid #23272e; transition: color 160ms cubic-bezier(0.22,1,0.36,1), border-color 160ms cubic-bezier(0.22,1,0.36,1); } .ds-btn-ghost:hover { border-color: #767c86; color: #ece8e1; } .ds-btn-ghost:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }"
+    },
+    {
+      "name": "Nav Item",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "A destination on the board rail: icon, label, mono route code, lit lamp when active.",
+      "html": "<button class=\"ds-nav active\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M12 3v6M12 15v6M3 12h6M15 12h6\"/><circle cx=\"12\" cy=\"12\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"/></svg><span>Modules &amp; Tools</span><code>MOD</code></button>",
+      "css": ".ds-nav { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 2px; background: transparent; color: #a7abb3; font-family: Archivo, sans-serif; font-size: 13.5px; font-weight: 600; border: 0; } .ds-nav code { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #767c86; margin-left: auto; } .ds-nav:hover { color: #ece8e1; background: #14171c; } .ds-nav.active { color: #ece8e1; background: #14171c; } .ds-nav.active::before { content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 7px; height: 7px; border-radius: 50%; background: #e8a33d; box-shadow: 0 0 0 3px rgba(232,163,61,0.2); } .ds-nav.active code { color: #f5b95f; } .ds-nav:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }"
+    },
+    {
+      "name": "Switch (Board Lever)",
+      "kind": "input",
+      "refersTo": "switch",
+      "description": "State is the knob: off = muted knob left, on = green knob right. The track never tints.",
+      "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked><span></span></label>",
+      "css": ".ds-switch { position: relative; display: inline-block; width: 40px; height: 22px; } .ds-switch input { opacity: 0; width: 0; height: 0; position: absolute; } .ds-switch span { position: absolute; inset: 0; background: #14171c; border: 1px solid #23272e; transition: border-color 160ms cubic-bezier(0.22,1,0.36,1); } .ds-switch span::before { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; background: #767c86; transition: transform 180ms cubic-bezier(0.22,1,0.36,1), background 160ms; } .ds-switch input:checked + span { border-color: rgba(111,191,115,0.65); } .ds-switch input:checked + span::before { transform: translateX(18px); background: #6fbf73; } .ds-switch input:focus-visible + span { outline: 2px solid #e8a33d; outline-offset: 2px; }"
+    },
+    {
+      "name": "Stat Readout (Flap Cell)",
+      "kind": "custom",
+      "refersTo": "stat-readout",
+      "description": "A seam-ruled readout: mono code, 34px tabular value that flips on change, micro-cap label, green lamp.",
+      "html": "<div class=\"ds-stat\"><code>TLT</code><div class=\"ds-stat-value\">43</div><span>TOTAL TOOLS</span></div>",
+      "css": ".ds-stat { background: #101216; padding: 18px 20px 16px; position: relative; } .ds-stat code { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.18em; color: #767c86; } .ds-stat-value { font-family: Archivo, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 10px 0 6px; display: inline-block; transform-origin: top center; } .ds-stat-value.flip { animation: ds-flap 420ms cubic-bezier(0.22,1,0.36,1) both; } .ds-stat span { font-family: Archivo, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #a7abb3; } .ds-stat::after { content: ''; position: absolute; top: 18px; right: 18px; width: 7px; height: 7px; border-radius: 50%; background: #6fbf73; } @keyframes ds-flap { 0% { transform: rotateX(0); opacity: 1; } 45% { transform: rotateX(-88deg); opacity: 0.15; } 55% { transform: rotateX(88deg); opacity: 0.15; } 100% { transform: rotateX(0); opacity: 1; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Departure Board",
+    "overview": "MCP Workstation is a mechanical split-flap departure board: the whole workstation — every module, tool, server, and token — reads as routes and lamps on one black instrument wall. The design refuses the soft-card AI dashboard completely: nothing floats, nothing glows, no glass, no shadows on in-page surfaces. Panels seat in 1px hairline seams like sheets of metal bolted to a wall; warm paper-white flap type in Archivo with tabular numerals carries every number; every route gets a short mono code (TIM, FET, GIT, CRY, DSH, SRV); and one amber lamp — the board's accent — marks the active route and the primary action. State is a mark, never a hue: a lit lamp, a dim cell, a moving knob, a punched code — never a tinted background. The one authored motion is the flap: values flip in pitched steps (rotateX), they never glide; expanding a module's tool list deploys in stepped order like flaps falling. Elevation is hairline, never shadow; the only shadow in the system is the modal overlay, which is shadow-only by exception.",
+    "keyCharacteristics": [
+      "Hairline seams between every panel — elevation by division, not by shadow",
+      "Route codes in IBM Plex Mono for every module, view, and destination",
+      "One amber lamp accent; green lamps for on; red reserved for anomalies only",
+      "Tabular numerals in every readout — numbers never jiggle",
+      "The flip as the single authored motion, with stepped deployment for expansions",
+      "Themed browser surfaces: amber caret, amber selection, hairline scrollbars"
+    ],
+    "rules": [
+      { "name": "The Lamp Rule", "body": "A state is a mark, never a tinted background: a lit lamp, a dim cell, a moving knob, a punched code. Green fills, red washes, and tinted cards are all forbidden — the lamp registers on the seam, not the surface.", "section": "colors" },
+      { "name": "The Single Accent Rule", "body": "Amber appears on a fraction of any screen: one active route, one primary action, small code chips. Its rarity is the point.", "section": "colors" },
+      { "name": "The Grotesk Display Rule", "body": "Display and section titles are Archivo, never mono — mono is the code register, and using it for headings is costume. All numerals use tabular-nums so readouts never jiggle.", "section": "typography" },
+      { "name": "The Seam Rule", "body": "Elevation is declared once: either a hairline border or a shadow — never both. A bordered card under a shadow is the ghost card, and it is forbidden.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do seat panels in 1px hairline seams and rule grids with 1px seam gaps.",
+      "Do label every route — modules, views, and stat cells — with a short mono code.",
+      "Do render every number in Archivo with tabular numerals.",
+      "Do reserve amber for marks: one active route, one primary action, small chips.",
+      "Do mark state with lamps, knobs, and punches — lit, dim, moved, punched.",
+      "Do flip values on change; deploy tool lists in stepped order."
+    ],
+    "donts": [
+      "Don't put a shadow on an in-page panel, or a border on the modal — elevation is declared once.",
+      "Don't tint a background to show state; the lamp lives on the seam, not the surface.",
+      "Don't use mono for section titles or decoration — mono is the code register only.",
+      "Don't use red except for anomalies and destructive actions.",
+      "Don't use emoji or glyph icons — icons are drawn SVG in one stroke weight.",
+      "Don't glide, tween, or slide readouts — the board flips."
+    ]
+  }
+}
