@@ -50,7 +50,7 @@ export default function Modules() {
         <div className="page-intro-copy">
           <Heading level={2}>Modules &amp; tools</Heading>
           <Text type="supporting" className="mt-1">
-            Enable a complete integration or fine-tune access down to one tool. Changes apply only to your endpoint.
+            Enable integrations or fine-tune access per tool. Changes apply to your endpoint.
           </Text>
         </div>
         <Button label="Browse directory" variant="secondary" size="sm" icon={<ExternalLink size={13} />} onClick={() => navigate("directory")} />
@@ -58,63 +58,75 @@ export default function Modules() {
 
       {Object.entries(byCategory).map(([category, modules]) => {
         const onCount = modules.filter(([name, module]) => module.enabled !== false && !disabledModules.has(name)).length;
+        const totalTools = modules.reduce((sum, [, m]) => sum + (m.tools?.length || 0), 0);
         return (
-          <section key={category}>
-            <div className="section-heading mb-3">
-              <CategoryIcon name={category} />
-              <Heading level={4} className="!mb-0">{category}</Heading>
-              <span className="section-count">{onCount} / {modules.length} enabled</span>
+          <section key={category} className="category-section">
+            <div className="category-header">
+              <span className="category-pill">
+                <CategoryIcon name={category} />
+                {category}
+              </span>
+              <Text type="label" size="sm" className="text-tertiary">
+                {onCount}/{modules.length} on · {totalTools} tools
+              </Text>
             </div>
-            <div className="capability-list">
+            <div className="card-grid">
               {modules.map(([name, module]) => {
                 const meta = MODULES[name] || { icon: "blocks", desc: "" };
                 const configOn = module.enabled !== false;
                 const enabled = configOn && !disabledModules.has(name);
                 const needsSetup = !configOn && Boolean(module.reason);
                 const tools = module.tools || [];
-                const toolCount = tools.filter((tool) => !disabledTools.has(tool)).length;
+                const enabledTools = tools.filter((tool) => !disabledTools.has(tool));
                 const expanded = Boolean(open[name]);
+
                 return (
-                  <article key={name} className={`capability-row ${enabled ? "" : "is-off"}`}>
-                    <div className="flex min-w-0 gap-3">
+                  <article key={name} className={`module-card ${enabled ? "" : "is-off"}`}>
+                    <div className="module-card-header">
                       <ModuleIcon name={meta.icon} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Text weight="semibold">{name}</Text>
+                      <div className="module-card-body">
+                        <div className="module-card-title">
+                          <Text weight="semibold" size="sm">{name}</Text>
                           {enabled ? (
-                            <Badge tone="ok">{toolCount} active</Badge>
+                            <Badge tone="ok">on</Badge>
                           ) : needsSetup ? (
-                            <Tooltip content={module.reason} placement="below" alignment="start"><Badge tone="warn">setup needed</Badge></Tooltip>
+                            <Tooltip content={module.reason} placement="below" alignment="start">
+                              <Badge tone="warn">setup</Badge>
+                            </Tooltip>
                           ) : (
-                            <Badge tone="off">disabled</Badge>
+                            <Badge tone="off">off</Badge>
                           )}
                         </div>
-                        <Text type="supporting" size="sm" className="mt-1 leading-relaxed">{meta.desc}</Text>
-                        {tools.length > 0 && (
-                          <Button
-                            label={`${expanded ? "Hide" : "Configure"} ${tools.length} tool${tools.length === 1 ? "" : "s"}`}
-                            variant="ghost"
-                            size="sm"
-                            className="mt-2"
-                            icon={expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                            onClick={() => setOpen((current) => ({ ...current, [name]: !current[name] }))}
-                          />
-                        )}
+                        <Text type="supporting" size="sm" className="module-card-desc">{meta.desc}</Text>
                       </div>
+                      <Switch label={name} value={enabled} onChange={(v) => toggleModule(name, v)} />
                     </div>
-                    <Switch label={`Enable ${name}`} value={enabled} onChange={(value) => toggleModule(name, value)} />
 
-                    {expanded && (
-                      <div className="capability-tools">
-                        <Text type="label" size="sm" className="px-2 text-tertiary">Individual tool access</Text>
-                        <div className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
-                          {tools.map((tool) => (
-                            <div key={tool} className="capability-tool">
-                              <Switch label={`Enable ${tool}`} size="sm" value={!disabledTools.has(tool)} onChange={(value) => toggleTool(tool, value)} />
-                              <code className="min-w-0 truncate font-mono text-xs text-secondary">{tool}</code>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="module-card-meta">
+                      <span>{enabledTools.length}/{tools.length} tools</span>
+                    </div>
+
+                    {tools.length > 0 && (
+                      <div className="module-card-tools">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs font-medium text-secondary transition-colors hover:text-primary"
+                          onClick={() => setOpen((c) => ({ ...c, [name]: !c[name] }))}
+                        >
+                          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {expanded ? "Hide" : "Configure"} {tools.length} tool{tools.length === 1 ? "" : "s"}
+                        </button>
+
+                        {expanded && (
+                          <div className="mt-2 flex flex-col gap-0.5">
+                            {tools.map((tool) => (
+                              <div key={tool} className="module-card-tool-row">
+                                <code className="module-card-tool-name">{tool}</code>
+                                <Switch label={tool} size="sm" value={!disabledTools.has(tool)} onChange={(v) => toggleTool(tool, v)} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </article>

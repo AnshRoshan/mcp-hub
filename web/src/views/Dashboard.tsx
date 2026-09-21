@@ -19,44 +19,49 @@ export default function Dashboard() {
     <div className="flex flex-col gap-7">
       <div className="page-intro">
         <div className="page-intro-copy">
-          <Heading level={2}>Your workstation</Heading>
+          <Heading level={2}>Workstation</Heading>
           <Text type="supporting" className="mt-1">
-            A live view of the capabilities exposed through your personal MCP endpoint.
+            Live view of capabilities exposed through your MCP endpoint.
           </Text>
         </div>
-        <Button label="Open connect guide" variant="primary" icon={<ArrowRight size={15} />} onClick={() => navigate("connect")} />
+        <Button label="Connect guide" variant="primary" icon={<ArrowRight size={15} />} onClick={() => navigate("connect")} />
       </div>
 
       <section className="metrics-rail" aria-label="Endpoint overview">
-        <Metric icon={<Wrench size={15} />} label="Available tools" value={yourTools || s.totalTools || 0} />
-        <Metric icon={<Server size={15} />} label="Active servers" value={activeServers} />
-        <Metric icon={<KeyRound size={15} />} label="API tokens" value={tokens.length} />
-        <Metric icon={<Cable size={15} />} label="Modules enabled" value={modulesOn} />
+        <Metric icon={<Wrench size={15} />} label="Tools" value={yourTools || s.totalTools || 0} />
+        <Metric icon={<Server size={15} />} label="Servers" value={activeServers} />
+        <Metric icon={<KeyRound size={15} />} label="Tokens" value={tokens.length} />
+        <Metric icon={<Cable size={15} />} label="Modules" value={modulesOn} />
       </section>
 
       <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,.75fr)]">
         <section>
           <div className="section-heading mb-3">
-            <Heading level={4} className="!mb-0">Enabled modules</Heading>
+            <Heading level={4} className="!mb-0">Modules</Heading>
             <span className="section-count">{modulesOn} / {modules.length}</span>
-            <Button label="Manage modules" variant="ghost" size="sm" className="ml-1" onClick={() => navigate("modules")} />
+            <Button label="Manage" variant="ghost" size="sm" className="ml-1" onClick={() => navigate("modules")} />
           </div>
           {modules.length === 0 ? (
-            <Empty>No module data available yet. Start the server to see modules.</Empty>
+            <Empty>No module data yet. Start the server to see modules.</Empty>
           ) : (
-            <div className="capability-list">
-              {modules.slice(0, 6).map((m) => {
+            <div className="module-summary">
+              <div className="module-summary-row" style={{ fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text-tertiary)" }}>
+                <span>Module</span>
+                <span>Tools</span>
+                <span style={{ textAlign: "right" }}>Status</span>
+              </div>
+              {modules.map((m) => {
                 const on = m.enabled && !disabled.has(m.name);
                 return (
-                  <div key={m.name} className={`capability-row ${on ? "" : "is-off"}`}>
+                  <div key={m.name} className={`module-summary-row ${on ? "" : "opacity-60"}`}>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Text weight="semibold">{m.name}</Text>
-                        <Badge tone={on ? "ok" : m.enabled ? "off" : "warn"}>{on ? "active" : m.enabled ? "off" : "setup needed"}</Badge>
-                      </div>
-                      <Text type="supporting" size="sm" className="mt-1">{m.category || "Utilities"}</Text>
+                      <span className="truncate text-primary font-medium">{m.name}</span>
+                      {m.category && <span className="ml-2 text-tertiary text-[11px]">{m.category}</span>}
                     </div>
-                    <code className="self-center font-mono text-xs tabular-nums text-secondary">{on ? `${m.toolCount || 0} tools` : "—"}</code>
+                    <span className="font-mono text-xs tabular-nums text-secondary">{on ? m.toolCount || 0 : "—"}</span>
+                    <span style={{ textAlign: "right" }}>
+                      <Badge tone={on ? "ok" : m.enabled ? "off" : "warn"}>{on ? "on" : m.enabled ? "off" : "setup"}</Badge>
+                    </span>
                   </div>
                 );
               })}
@@ -65,14 +70,14 @@ export default function Dashboard() {
         </section>
 
         <section className="border-l border-border pl-5 xl:pl-7">
-          <Heading level={4}>Get connected</Heading>
+          <Heading level={4}>Get started</Heading>
           <Text type="supporting" size="sm" className="mt-1.5 leading-relaxed">
-            Your endpoint is ready. Complete these steps once, then every enabled capability is available from the same connection.
+            Complete once, then every capability is available from one connection.
           </Text>
-          <ol className="mt-5 flex flex-col gap-4">
-            <QuickStep n={1} text={<>Add an MCP server</>} action={<Button label="Servers" variant="ghost" size="sm" onClick={() => navigate("servers")} />} />
-            <QuickStep n={2} text={<>Create an API token</>} action={<Button label="Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />} />
-            <QuickStep n={3} text={<>Connect your client to <code>/mcp</code></>} />
+          <ol className="mt-5 quick-steps">
+            <QuickStep n={1} text="Add an MCP server" action={<Button label="Servers" variant="ghost" size="sm" onClick={() => navigate("servers")} />} />
+            <QuickStep n={2} text="Create an API token" action={<Button label="Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />} />
+            <QuickStep n={3} text={<>Point at <code>/mcp</code></>} />
           </ol>
         </section>
       </div>
@@ -94,7 +99,7 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
 
 function QuickStep({ n, text, action }: { n: number; text: ReactNode; action?: ReactNode }) {
   return (
-    <li className="flex items-center gap-3">
+    <li className="quick-step">
       <span className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full border border-border bg-surface text-[11px] font-semibold text-secondary">{n}</span>
       <span className="min-w-0 flex-1 text-sm text-secondary">{text}</span>
       {action}

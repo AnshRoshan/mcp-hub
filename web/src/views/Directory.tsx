@@ -35,11 +35,11 @@ export default function Directory() {
     <div className="flex flex-col gap-7">
       <div className="page-intro">
         <div className="page-intro-copy">
-          <Heading level={2}>MCP directory</Heading>
-          <Text type="supporting" className="mt-1">Add a known server in one step, then provide its credentials in your private configuration.</Text>
+          <Heading level={2}>Directory</Heading>
+          <Text type="supporting" className="mt-1">Add a known server in one step, then configure credentials.</Text>
         </div>
         <div className="w-full sm:w-[280px]">
-          <TextInput label="Search directory" isLabelHidden type="text" placeholder="Search servers…" startIcon={Search} hasClear width="100%" value={query} onChange={setQuery} />
+          <TextInput label="Search" isLabelHidden type="text" placeholder="Search servers…" startIcon={Search} hasClear width="100%" value={query} onChange={setQuery} />
         </div>
       </div>
 
@@ -49,15 +49,19 @@ export default function Directory() {
       </div>
 
       {blocks.length === 0 ? (
-        <EmptyState title="No servers match" description={`Nothing matches “${query}” — try another term.`} icon={<Icon icon={Search} size="lg" />} actions={<Button label="Browse modules" variant="secondary" onClick={() => navigate("modules")} />} />
+        <EmptyState title="No servers match" description={`Nothing matches "${query}" — try another term.`} icon={<Icon icon={Search} size="lg" />} actions={<Button label="Browse modules" variant="secondary" onClick={() => navigate("modules")} />} />
       ) : (
         <div className="flex flex-col gap-8">
           {blocks.map((block) => (
-            <section key={block.category}>
-              <div className="section-heading mb-3">
-                <CategoryIcon name={block.category} />
-                <Heading level={4} className="!mb-0">{block.category}</Heading>
-                <span className="section-count">{block.entries.length}</span>
+            <section key={block.category} className="category-section">
+              <div className="category-header">
+                <span className="category-pill">
+                  <CategoryIcon name={block.category} />
+                  {block.category}
+                </span>
+                <Text type="label" size="sm" className="text-tertiary">
+                  {block.entries.length} server{block.entries.length === 1 ? "" : "s"}
+                </Text>
               </div>
               <div className="capability-list">
                 {block.entries.map((entry) => <DirectoryRow key={entry.name} entry={entry} onAdd={() => add(entry, block.category)} />)}
@@ -78,10 +82,16 @@ function DirectoryRow({ entry, onAdd }: { entry: CatalogEntry; onAdd: () => void
   const ServerIcon = catalogIcon(entry.name);
   return (
     <article className="directory-row">
-      <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-body text-secondary"><ServerIcon size={18} strokeWidth={1.9} /></span>
+      <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-body text-secondary">
+        <ServerIcon size={18} strokeWidth={1.9} />
+      </span>
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2"><Text weight="semibold">{entry.name}</Text><Tag tone={entry.by === "official" ? "official" : "neutral"}>{entry.by}</Tag><Tag tone={entry.transport === "http" ? "http" : "stdio"}>{entry.transport}</Tag></div>
-        <Text type="supporting" size="sm" className="mt-1 leading-relaxed">{entry.desc}</Text>
+        <div className="flex flex-wrap items-center gap-2">
+          <Text weight="semibold">{entry.name}</Text>
+          <Tag tone={entry.by === "official" ? "official" : "neutral"}>{entry.by}</Tag>
+          <Tag tone={entry.transport === "http" ? "http" : "stdio"}>{entry.transport}</Tag>
+        </div>
+        <Text type="supporting" size="sm" className="mt-1 leading-relaxed line-clamp-2">{entry.desc}</Text>
       </div>
       <div className="min-w-0">
         <code className="block truncate font-mono text-xs text-secondary" title={entry.cmd}>{entry.cmd}</code>
@@ -89,7 +99,10 @@ function DirectoryRow({ entry, onAdd }: { entry: CatalogEntry; onAdd: () => void
           {entry.env.length === 0 ? <Tag>no keys</Tag> : entry.env.length <= 2 ? <Tag>{entry.env.join(", ")}</Tag> : <Tooltip content={`env: ${entry.env.join(", ")}`} placement="below" alignment="start"><Tag>{entry.env[0]} +{entry.env.length - 1}</Tag></Tooltip>}
         </div>
       </div>
-      <div className="flex items-center gap-1.5"><CopyBtn text={entry.cmd} label="" /><Button label="Add" variant="primary" size="sm" icon={<Plus size={14} strokeWidth={2.6} />} onClick={onAdd} /></div>
+      <div className="flex items-center gap-1.5">
+        <CopyBtn text={entry.cmd} label="" />
+        <Button label="Add" variant="primary" size="sm" icon={<Plus size={14} strokeWidth={2.6} />} onClick={onAdd} />
+      </div>
     </article>
   );
 }

@@ -54,7 +54,6 @@ export default function AuthView() {
     setError(null);
     try {
       await emailSignIn(email.trim(), password);
-      // success reloads; on failure we land below
     } catch (err) {
       setError(errMsg(err, "Sign-in failed. Is email/password auth enabled?"));
       setBusy(null);
@@ -65,13 +64,13 @@ export default function AuthView() {
     <div className="flex min-h-dvh items-center justify-center p-5">
       <Card padding={8} elevation="med" className="w-full max-w-[420px]">
         <div className="flex flex-col items-center text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface">
-            <Zap size={26} strokeWidth={2.2} className="text-primary" />
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface">
+            <Zap size={30} strokeWidth={2.2} className="text-primary" />
           </span>
           <Heading level={2} className="mt-5">
             MCP Workstation
           </Heading>
-          <Text type="supporting" className="mt-1.5 max-w-[32ch] leading-relaxed">
+          <Text type="supporting" className="mt-2 max-w-[32ch] leading-relaxed">
             One endpoint. Every MCP. Your own toolbox.
           </Text>
         </div>

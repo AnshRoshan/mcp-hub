@@ -40,7 +40,6 @@ export default function Servers() {
 
   const [form, setForm] = useState<ServerForm>(emptyForm);
 
-  // Handle one-click "Add" from the Directory.
   useEffect(() => {
     if (prefill) {
       const { entry, cat } = prefill;
@@ -69,7 +68,7 @@ export default function Servers() {
       applyPrefill(null);
       requestAnimationFrame(() => {
         formTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        toast(`Prefilled “${entry.name}” — add your keys and save`);
+        toast(`Prefilled "${entry.name}" — add your keys and save`);
       });
     }
   }, [prefill, applyPrefill, toast]);
@@ -131,7 +130,7 @@ export default function Servers() {
 
   const onDelete = async (s: ServerRow) => {
     const ok = await ask(
-      `Delete “${s.key}”?`,
+      `Delete "${s.key}"?`,
       "This server stops appearing in your endpoint immediately. The config is removed and cannot be restored.",
       "Delete server",
     );
@@ -152,19 +151,14 @@ export default function Servers() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0 flex-1 basis-64">
+      <div className="page-intro">
+        <div className="page-intro-copy">
           <Heading level={2}>Servers</Heading>
           <Text type="supporting" className="mt-1 max-w-[72ch]">
-            Register MCP servers (stdio or HTTP). Tools are namespaced into your personal endpoint.
+            Register MCP servers (stdio or HTTP). Tools are namespaced into your endpoint.
           </Text>
         </div>
-        <Button
-          label="Add server"
-          variant="primary"
-          icon={<Plus size={15} strokeWidth={2.4} />}
-          onClick={openNew}
-        />
+        <Button label="Add server" variant="primary" icon={<Plus size={15} strokeWidth={2.4} />} onClick={openNew} />
       </div>
 
       <div ref={formTop} />
@@ -172,16 +166,9 @@ export default function Servers() {
         <Card padding={5}>
           <div className="mb-2 flex items-center justify-between">
             <Heading level={4}>
-              {editing === "new" ? (draft ? `Add ${draft.key} from the directory` : "Add MCP server") : `Edit ${(editing as ServerRow).key}`}
+              {editing === "new" ? (draft ? `Add ${draft.key}` : "Add server") : `Edit ${(editing as ServerRow).key}`}
             </Heading>
-            <Button
-              label="Close form"
-              variant="ghost"
-              size="sm"
-              isIconOnly
-              icon={<X size={15} />}
-              onClick={close}
-            />
+            <Button label="Close" variant="ghost" size="sm" isIconOnly icon={<X size={15} />} onClick={close} />
           </div>
           <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextInput
@@ -193,75 +180,35 @@ export default function Servers() {
               description="Tools from this server are namespaced under this prefix."
             />
             <div>
-              <Text type="label" size="sm" className="mb-1.5 block text-secondary">
-                Category
-              </Text>
+              <Text type="label" size="sm" className="mb-1.5 block text-secondary">Category</Text>
               <select className={selectCls} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {FORM_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
+                {FORM_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <Text type="label" size="sm" className="mb-1.5 block text-secondary">
-                Type
-              </Text>
+              <Text type="label" size="sm" className="mb-1.5 block text-secondary">Type</Text>
               <select className={selectCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as "stdio" | "http" })}>
                 <option value="stdio">stdio — local command</option>
                 <option value="http">http — remote endpoint</option>
               </select>
             </div>
             {form.type === "http" ? (
-              <TextInput
-                label="URL"
-                placeholder="https://example.com/mcp"
-                value={form.url}
-                onChange={(v) => setForm({ ...form, url: v })}
-              />
+              <TextInput label="URL" placeholder="https://example.com/mcp" value={form.url} onChange={(v) => setForm({ ...form, url: v })} />
             ) : (
               <>
-                <TextInput
-                  label="Command"
-                  placeholder="npx"
-                  isRequired
-                  value={form.command}
-                  onChange={(v) => setForm({ ...form, command: v })}
-                />
-                <TextInput
-                  label="Args (comma separated)"
-                  placeholder="-y, @modelcontextprotocol/server-filesystem"
-                  value={form.args}
-                  onChange={(v) => setForm({ ...form, args: v })}
-                />
+                <TextInput label="Command" placeholder="npx" isRequired value={form.command} onChange={(v) => setForm({ ...form, command: v })} />
+                <TextInput label="Args (comma separated)" placeholder="-y, @modelcontextprotocol/server-filesystem" value={form.args} onChange={(v) => setForm({ ...form, args: v })} />
               </>
             )}
             {form.type === "stdio" && (
-              <TextInput
-                label="Working directory"
-                placeholder="/path/to/project"
-                isOptional
-                value={form.cwd}
-                onChange={(v) => setForm({ ...form, cwd: v })}
-              />
+              <TextInput label="Working directory" placeholder="/path/to/project" isOptional value={form.cwd} onChange={(v) => setForm({ ...form, cwd: v })} />
             )}
             <div>
-              <TextArea
-                label="Environment (KEY=VALUE, one per line — stored encrypted)"
-                rows={3}
-                placeholder={"MY_API_KEY=secret\nOTHER=value"}
-                value={form.env}
-                onChange={(v) => setForm({ ...form, env: v })}
-              />
+              <TextArea label="Environment (KEY=VALUE, one per line — stored encrypted)" rows={3} placeholder={"MY_API_KEY=secret\nOTHER=value"} value={form.env} onChange={(v) => setForm({ ...form, env: v })} />
             </div>
             {form.type === "http" && (
               <div>
-                <TextArea
-                  label="HTTP headers (Key: Value, one per line)"
-                  rows={2}
-                  placeholder="Authorization: Bearer xxx"
-                  value={form.headers}
-                  onChange={(v) => setForm({ ...form, headers: v })}
-                />
+                <TextArea label="HTTP headers (Key: Value, one per line)" rows={2} placeholder="Authorization: Bearer xxx" value={form.headers} onChange={(v) => setForm({ ...form, headers: v })} />
               </div>
             )}
             <div className="mt-2 flex justify-end gap-2.5 md:col-span-2">
@@ -275,44 +222,25 @@ export default function Servers() {
       {servers.length === 0 ? (
         <Empty>No servers yet. Add your first MCP server to get started.</Empty>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="capability-list">
           {servers.map((s) => (
-            <Card key={s.id} padding={3}>
-              <div className="flex flex-wrap items-center gap-3.5">
-                <Switch
-                  label={s.key}
-                  value={s.enabled}
-                  onChange={(v) => onToggle(s, v)}
-                />
-                <div className="min-w-0 flex-1">
+            <div key={s.id} className="capability-row">
+              <div className="flex items-center gap-3.5">
+                <Switch label={s.key} value={s.enabled} onChange={(v) => onToggle(s, v)} />
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                     <span className="text-primary">{s.key}</span>
                     <Badge>{s.type}</Badge>
                     {s.category && <Badge>{s.category}</Badge>}
                   </div>
-                  <code className="mt-0.5 block break-all font-mono text-xs text-secondary">
-                    {detail(s)}
-                  </code>
-                </div>
-                <div className="flex flex-none gap-2">
-                  <Button
-                    label="Edit"
-                    variant="ghost"
-                    size="sm"
-                    icon={<Pencil size={13} />}
-                    onClick={() => openEdit(s)}
-                  />
-                  <Button
-                    label="Delete"
-                    variant="ghost"
-                    size="sm"
-                    icon={<Trash2 size={13} />}
-                    className="!text-red-vivid hover:!border-red-ring"
-                    onClick={() => onDelete(s)}
-                  />
+                  <code className="mt-0.5 block break-all font-mono text-xs text-secondary">{detail(s)}</code>
                 </div>
               </div>
-            </Card>
+              <div className="flex flex-none gap-2">
+                <Button label="Edit" variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(s)} />
+                <Button label="Delete" variant="ghost" size="sm" icon={<Trash2 size={13} />} className="!text-red-vivid hover:!border-red-ring" onClick={() => onDelete(s)} />
+              </div>
+            </div>
           ))}
         </div>
       )}

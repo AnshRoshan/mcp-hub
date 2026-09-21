@@ -23,7 +23,7 @@ export default function Skills() {
     try {
       await putSkills([...next]);
       setMe(me ? { ...me, skills: skills.map((skill) => ({ ...skill, enabled: next.has(skill.name) })) } : me);
-      toast(`Skill “${name}” ${enabled ? "enabled" : "disabled"}`);
+      toast(`Skill "${name}" ${enabled ? "enabled" : "disabled"}`);
     } catch (err) {
       toast(errMsg(err, "Update failed"));
     }
@@ -35,9 +35,9 @@ export default function Skills() {
     <div className="flex flex-col gap-8">
       <div className="page-intro">
         <div className="page-intro-copy">
-          <Heading level={2}>Skills hub</Heading>
+          <Heading level={2}>Skills</Heading>
           <Text type="supporting" className="mt-1">
-            Reusable instruction sets available to your agent through <code>skills_list</code> and <code>skills_get</code>.
+            Reusable instruction sets your agent follows — loaded via <code>skills_list</code> / <code>skills_get</code>.
           </Text>
         </div>
       </div>
@@ -45,27 +45,49 @@ export default function Skills() {
       {Object.entries(byCategory).map(([category, items]) => {
         const enabledCount = items.filter((skill) => skill.enabled).length;
         return (
-          <section key={category}>
-            <div className="section-heading mb-3">
-              <CategoryIcon name={category} />
-              <Heading level={4} className="!mb-0">{category}</Heading>
-              <span className="section-count">{enabledCount} / {items.length} enabled</span>
+          <section key={category} className="category-section">
+            <div className="category-header">
+              <span className="category-pill">
+                <CategoryIcon name={category} />
+                {category}
+              </span>
+              <Text type="label" size="sm" className="text-tertiary">
+                {enabledCount}/{items.length} on
+              </Text>
             </div>
-            <div className="capability-list">
+            <div className="card-grid">
               {items.map((skill) => (
-                <article key={skill.name} className={`capability-row ${skill.enabled ? "" : "is-off"}`}>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Text weight="semibold">{skill.name}</Text>
-                      <code className="font-mono text-[11px] text-tertiary">v{skill.version}</code>
-                      <Badge tone={skill.enabled ? "ok" : "off"}>{skill.enabled ? "enabled" : "disabled"}</Badge>
+                <article key={skill.name} className={`skill-card ${skill.enabled ? "" : "is-off"}`}>
+                  <div className="skill-card-header">
+                    <div className="skill-card-name">
+                      <Text weight="semibold" size="sm">{skill.name}</Text>
+                      <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-mono text-tertiary">
+                        v{skill.version}
+                      </span>
                     </div>
-                    <Text type="supporting" size="sm" className="mt-1 leading-relaxed">{skill.description}</Text>
-                    {skill.content && (
-                      <Button label="Preview instructions" variant="ghost" size="sm" className="mt-2" icon={<Eye size={13} />} onClick={() => setPreview(skill.name)} />
-                    )}
+                    <Switch label={skill.name} value={skill.enabled} onChange={(v) => toggle(skill.name, v)} />
                   </div>
-                  <Switch label={`Enable ${skill.name}`} value={skill.enabled} onChange={(value) => toggle(skill.name, value)} />
+
+                  <Text type="supporting" size="sm" className="skill-card-desc">
+                    {skill.description}
+                  </Text>
+
+                  <div className="skill-card-footer">
+                    {skill.content ? (
+                      <Button
+                        label="Preview"
+                        variant="ghost"
+                        size="sm"
+                        icon={<Eye size={13} />}
+                        onClick={() => setPreview(skill.name)}
+                      />
+                    ) : (
+                      <span />
+                    )}
+                    <Badge tone={skill.enabled ? "ok" : "off"}>
+                      {skill.enabled ? "active" : "off"}
+                    </Badge>
+                  </div>
                 </article>
               ))}
             </div>

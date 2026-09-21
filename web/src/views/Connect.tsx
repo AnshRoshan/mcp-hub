@@ -22,25 +22,25 @@ export default function Connect() {
       <div>
         <Heading level={2}>Connect</Heading>
         <Text type="supporting" className="mt-1 max-w-[72ch]">
-          Every client points at <code>/mcp</code> with the same Bearer token. Pick yours below.
+          Every client points at <code>/mcp</code> with the same Bearer token.
         </Text>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4.5 xl:grid-cols-[340px_1fr]">
         <Card padding={5}>
-          <Heading level={4}>How it works</Heading>
-          <ol className="m-0 mt-4 flex list-none flex-col gap-4 p-0">
+          <Heading level={4}>Quick start</Heading>
+          <ol className="m-0 mt-4 flex list-none flex-col gap-3 p-0">
             <Step n={1}>
               <Text weight="semibold">Add servers</Text>
-              <div className="mt-1 flex flex-wrap gap-1.5">
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <Button label="Servers" variant="ghost" size="sm" onClick={() => navigate("servers")} />
                 <Button label="Modules" variant="ghost" size="sm" onClick={() => navigate("modules")} />
               </div>
             </Step>
             <Step n={2}>
               <Text weight="semibold">Create a token</Text>
-              <div className="mt-1">
-                <Button label="API Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />
+              <div className="mt-1.5">
+                <Button label="Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />
               </div>
             </Step>
             <Step n={3}>
@@ -50,18 +50,16 @@ export default function Connect() {
             </Step>
           </ol>
 
-          <div className="mt-5 rounded-md border border-dashed border-border bg-muted p-3.5">
+          <div className="mt-5 rounded-lg border border-border bg-surface p-3">
             <Text type="supporting" size="sm">
-              <strong className="text-primary">stdio</strong> runs locally. <strong className="text-primary">HTTP</strong> points at a remote endpoint.
+              <strong className="text-primary">stdio</strong> runs locally · <strong className="text-primary">HTTP</strong> points at a remote endpoint
             </Text>
           </div>
         </Card>
 
         <Card padding={5}>
           <TabList value={active} onChange={setActive} hasDivider size="sm" layout="fill">
-            {CLIENTS.map((c) => (
-              <Tab key={c.id} value={c.id} label={c.name} />
-            ))}
+            {CLIENTS.map((c) => <Tab key={c.id} value={c.id} label={c.name} />)}
           </TabList>
 
           <div key={client.id} className="mt-4">
@@ -72,18 +70,11 @@ export default function Connect() {
               </KvList>
             </div>
 
-            <CodeBlock
-              code={cfg}
-              language={isCmd ? "bash" : "json"}
-              title={client.file}
-              hasLanguageLabel={false}
-              maxHeight={320}
-            />
+            <CodeBlock code={cfg} language={isCmd ? "bash" : "json"} title={client.file} hasLanguageLabel={false} maxHeight={320} />
 
             <Text type="supporting" size="sm" className="mt-3">
               No token yet?{" "}
-              <Button label="Create one in API Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />
-              . Then verify the connection — most clients show an MCP status panel.
+              <Button label="Create one" variant="ghost" size="sm" onClick={() => navigate("tokens")} />.
             </Text>
           </div>
         </Card>

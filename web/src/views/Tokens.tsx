@@ -31,7 +31,7 @@ export default function Tokens() {
 
   const revoke = async (id: string, tokenName: string) => {
     const ok = await ask(
-      `Revoke “${tokenName}”?`,
+      `Revoke "${tokenName}"?`,
       "Clients using this token lose access immediately. The token cannot be recovered.",
       "Revoke token",
     );
@@ -47,32 +47,22 @@ export default function Tokens() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0 flex-1 basis-64">
+      <div className="page-intro">
+        <div className="page-intro-copy">
           <Heading level={2}>Tokens</Heading>
           <Text type="supporting" className="mt-1 max-w-[72ch]">
-            Authenticate your MCP clients. Pass as a Bearer token on every request to <code>/mcp</code>.
+            Authenticate MCP clients. Pass as a Bearer token on every request to <code>/mcp</code>.
           </Text>
         </div>
-        <Button
-          label="Create token"
-          variant="primary"
-          icon={<Plus size={15} strokeWidth={2.4} />}
-          onClick={() => { setCreating(true); setNewToken(null); }}
-        />
+        <Button label="Create token" variant="primary" icon={<Plus size={15} strokeWidth={2.4} />} onClick={() => { setCreating(true); setNewToken(null); }} />
       </div>
 
       {creating && (
         <Card padding={5}>
-          <Heading level={4}>New API token</Heading>
+          <Heading level={4}>New token</Heading>
           <form onSubmit={create} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
-              <TextInput
-                label="Name"
-                placeholder="Claude Code"
-                value={name}
-                onChange={setName}
-              />
+              <TextInput label="Name" placeholder="Claude Code" value={name} onChange={setName} />
             </div>
             <Button label="Create" variant="primary" type="submit" />
           </form>
@@ -81,20 +71,10 @@ export default function Tokens() {
 
       {newToken && (
         <Card padding={5} variant="green">
-          <Heading level={4}>Your new token — copy it now, it won't be shown again</Heading>
+          <Heading level={4}>Copy this token — it won't be shown again</Heading>
           <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <code className="block flex-1 break-all rounded-md border border-border bg-surface p-3 font-mono text-sm text-primary">
-              {newToken}
-            </code>
-            <Button
-              label="Copy token"
-              variant="primary"
-              icon={<KeyRound size={15} />}
-              onClick={async () => {
-                await copyText(newToken);
-                toast("Token copied");
-              }}
-            />
+            <code className="block flex-1 break-all rounded-md border border-border bg-surface p-3 font-mono text-sm text-primary">{newToken}</code>
+            <Button label="Copy" variant="primary" icon={<KeyRound size={15} />} onClick={async () => { await copyText(newToken); toast("Token copied"); }} />
           </div>
         </Card>
       )}
@@ -102,44 +82,35 @@ export default function Tokens() {
       {tokens.length === 0 ? (
         <Empty>No tokens yet. Create one to connect your MCP client.</Empty>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="capability-list">
           {tokens.map((t) => (
-            <Card key={t.id} padding={3}>
-              <div className="flex flex-wrap items-center gap-3.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                    <span className="text-primary">{t.name}</span>
-                    <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 font-mono text-[10.5px] text-secondary">
-                      …{t.hint}
-                    </span>
-                  </div>
-                  <Text type="supporting" size="sm" className="mt-0.5">
-                    <Tooltip content={new Date(t.createdAt).toLocaleString()} placement="below" alignment="start">
-                      <span>Created {timeAgo(t.createdAt)}</span>
+            <div key={t.id} className="capability-row">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  <span className="text-primary">{t.name}</span>
+                  <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 font-mono text-[10.5px] text-secondary">
+                    …{t.hint}
+                  </span>
+                </div>
+                <Text type="supporting" size="sm" className="mt-0.5">
+                  <Tooltip content={new Date(t.createdAt).toLocaleString()} placement="below" alignment="start">
+                    <span>Created {timeAgo(t.createdAt)}</span>
+                  </Tooltip>
+                  {" · "}
+                  {t.lastUsedAt ? (
+                    <Tooltip content={new Date(t.lastUsedAt).toLocaleString()} placement="below" alignment="start">
+                      <span>last used {timeAgo(t.lastUsedAt)}</span>
                     </Tooltip>
-                    {" · "}
-                    {t.lastUsedAt ? (
-                      <Tooltip content={new Date(t.lastUsedAt).toLocaleString()} placement="below" alignment="start">
-                        <span>last used {timeAgo(t.lastUsedAt)}</span>
-                      </Tooltip>
-                    ) : (
-                      "last used never"
-                    )}
-                  </Text>
-                </div>
-                <div className="flex flex-none flex-wrap gap-2">
-                  <CopyBtn text={`Authorization: Bearer …${t.hint}`} label="Copy auth header" />
-                  <Button
-                    label="Revoke"
-                    variant="ghost"
-                    size="sm"
-                    icon={<Trash2 size={13} />}
-                    className="!text-red-vivid hover:!border-red-ring"
-                    onClick={() => revoke(t.id, t.name)}
-                  />
-                </div>
+                  ) : (
+                    "never used"
+                  )}
+                </Text>
               </div>
-            </Card>
+              <div className="flex flex-none flex-wrap gap-2">
+                <CopyBtn text={`Authorization: Bearer …${t.hint}`} label="Copy auth header" />
+                <Button label="Revoke" variant="ghost" size="sm" icon={<Trash2 size={13} />} className="!text-red-vivid hover:!border-red-ring" onClick={() => revoke(t.id, t.name)} />
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -148,7 +119,6 @@ export default function Tokens() {
   );
 }
 
-/** Compact relative timestamp; hover a token row for the exact date. */
 function timeAgo(iso: string): string {
   const secs = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (secs < 60) return "just now";
