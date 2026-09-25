@@ -104,8 +104,21 @@ export async function getSession(): Promise<SessionResult> {
   return data && data.user ? { kind: "signed-in", user: data.user } : { kind: "signed-out" };
 }
 
-export async function socialSignIn(provider: "google" | "github"): Promise<void> {
-  const res = await fetch("/api/auth/sign-in/social", {
+export interface AuthConfig {
+  providers: { google: boolean; github: boolean };
+  emailAuth: boolean;
+}
+
+/** Public pre-session config; null when unavailable → caller keeps defaults. */
+export async function getAuthConfig(): Promise<AuthConfig | null> {
+  try {
+    return await api<AuthConfig>("/api/config");
+  } catch {
+    return null;
+  }
+}
+
+export async function socialSignIn(provider: "google" | "github"): Promise<void> {  const res = await fetch("/api/auth/sign-in/social", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
