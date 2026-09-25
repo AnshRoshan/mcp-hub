@@ -8,7 +8,9 @@ framework dependencies in the core.
 
 ```bash
 npm install
+npm run check            # typechecks + dead-code gate + unit tests (run before pushing)
 npm run typecheck    # fast type check
+npm run test:unit    # fast unit tests (no build needed)
 npm test             # builds + runs the end-to-end smoke test
 npm start            # run the server (http://localhost:3125/mcp)
 ```
@@ -41,23 +43,33 @@ Requires **Node.js ≥ 22.5** (for the built-in `node:sqlite`).
 
 ## Adding a new built-in module
 
-1. Create `src/builtins/yourname.ts` exporting:
-   - `export const yournameDefs: ToolDef[]` — your tools. Each `ToolDef` is
-     `{ name, description, inputSchema /* JSON Schema */, handler(args) }`.
-     Handlers return a `CallToolResult` (use `textResult`/`jsonResult`/`errResult`
-     from `src/result.ts`).
-   - `export const yournameEnabled = { enabled: boolean, reason? }` — return
-     `enabled: false` with a reason when a required API key is missing.
-2. Register it in `src/server.ts` with `defineModule(name, category, defs, enabled, reason?)`
-   (categories are shown in the dashboard: `Utilities`, `Development`, `Finance & Crypto`, …):
+1. Create `src/builtins/yourname.ts` exporting your tools. Each `ToolDef` is
+   `{ name, description, inputSchema /* JSON Schema */, handler(args) }`.
+   Handlers return a `CallToolResult` (use `textResult`/`jsonResult`/`errResult`
+   from `src/result.ts`).
+
+   - **No credentials needed?** `export const yournameDefs: ToolDef[]`.
+   - **Uses API keys?** Export a factory that reads them from the caller's
+     `EnvSource` (in platform mode that layer contains the *requesting user's*
+     stored secrets, falling back to process env):
+     ```ts
+     export function yournameModule(env: EnvSource):
+         { defs: ToolDef[]; enabled: boolean; reason?: string } {
+       const token = env.get("YOURNAME_TOKEN");
+       return { defs: [...], ...(token ? { enabled: true } : { enabled: false, reason: "YOURNAME_TOKEN not set" }) };
+     }
+     ```
+     Add your env var to `USER_OVERRIDABLE_ENV` in
+     `src/platform/serverConfig.ts` so users can supply it via `/api/secrets`.
+2. Register it in `src/server.ts` (categories are shown in the dashboard:
+   `Utilities`, `Development`, `Finance & Crypto`, …):
    ```ts
-   import { yournameDefs, yournameEnabled } from "./builtins/yourname.js";
-   defineModule("yourname", "Your Category", yournameDefs, yournameEnabled.enabled,
-     yournameEnabled.enabled ? undefined : yournameEnabled.reason);
+   defineModule("yourname", "Your Category", yournameDefs, true);          // static
+   defineEnvModule("yourname", "Your Category", yournameModule);           // per-user creds
    ```
-3. Add its `{ icon, desc }` entry to the `MODULES` map in `public/assets/app.js` so the
-   dashboard renders it.
-4. Run `npm run typecheck`, `npm test`, and `npm run test:platform`.
+3. Add its `{ icon, desc }` entry to the `MODULES` map in `web/src/lib/catalog.ts`
+   so the dashboard renders it.
+4. Run `npm run check`, then `npm test` and `npm run test:platform`.
 5. Document the module (and any new env vars) in `README.md` / `.env.example`.
 
 ## Adding a skill to the Skills Hub
@@ -102,27 +114,43 @@ All configuration is via env vars (see `.env.example`). Key ones:
 | `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` | web search provider |
 | `DATABASE_URL`, `PG_ALLOW_WRITE`, `SQLITE_ALLOW_WRITE` | databases |
 | `MCP_WORKSTATION_SERVERS` | path to the shared upstream servers config |
+| `USER_SESSION_TTL_MS`, `MAX_USER_SESSIONS` | per-user upstream connection pool (idle TTL / LRU cap) |
+| `MAX_RESULT_BYTES` | tool-result spill threshold (0 disables) |
+| `CORS_ALLOWED_ORIGINS` | extra origins allowed for credentialed `/api/*` calls |
 
 ## Testing
 
-- `npm test` — `scripts/smoke.mjs`: spawns the built server (single-user),
-  connects with the official v2 client, verifies tool discovery, calls, memory,
-  knowledge search.
+- `npm run test:unit` — `tests/*.test.ts`: fast unit tests (`node --test` +
+  tsx, no build needed) for the pure modules: env/arg coercion, config parsing,
+  rate limiting, audit masking.
+- `npm test` — build + unit tests + `scripts/smoke.mjs`: spawns the built
+  server (single-user), connects with the official v2 client, verifies tool
+  discovery, calls, memory, knowledge search.
 - `npm run test:platform` — `scripts/smoke-platform.mjs`: boots the server in
   platform mode and verifies sign-up/sign-in, token minting, gated `/mcp`
   (401 without a token), registering a stdio server with encrypted env, toggles,
   and **multi-user isolation** (a second user cannot see the first's servers).
 - `npm run test:integrations` — `scripts/smoke-ghjira.mjs`: GitHub + Jira
-  against a local mock API (no real credentials needed).
+  against a local mock API (no real credentials needed). Run it while no other
+  smoke test is holding its port.
 
-Add your module's core happy-path to the relevant script.
+Add unit tests for pure logic in `tests/`, and your module's core happy-path to
+the relevant smoke script.
 
-## Testing
+## CI & security scanning
 
-`npm test` runs `scripts/smoke.mjs`, which spawns the built server with a
-throwaway data directory, connects with the official v2 client, and verifies:
-tool discovery, tool calls, memory persistence, and the knowledge base
-(full-text + vector search). Add your module's core happy-path to this script.
+CI (`.github/workflows/ci.yml`) runs on every push/PR against Node 22 and 24:
+`npm run check` (typechecks, dead-code gate, unit tests, registry-schema
+validation), both builds, and all three smoke suites.
+
+For security review of upstream servers (or this repo) we recommend
+[Cisco AI MCP Scanner](https://github.com/cisco-ai-defense/mcp-scanner):
+
+```bash
+uv tool install --python 3.13 cisco-ai-mcp-scanner
+# scan a deployed remote MCP endpoint:
+mcp-scanner --server-url https://your-host/mcp --analyzers yara --format summary
+```
 
 ## Style
 

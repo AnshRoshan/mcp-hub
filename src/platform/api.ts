@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { withTimeout } from "../utils.js";
 import type { PlatformDb } from "./db.js";
 import type { PlatformAuth } from "./auth.js";
-import { decryptSecret, encryptSecret, sha256Hex } from "./crypto.js";
 import { mintToken } from "./tokens.js";
 import { allSkillNames, type Skill } from "./skills.js";
-import type { UpstreamServerConfig } from "../config.js";
+import { decodeSecrets, encodeSecrets, encryptStringMap, serverDto, USER_OVERRIDABLE_ENV, USER_SECRETS } from "./serverConfig.js";
 
 export interface ApiContext {
   db: PlatformDb;
@@ -60,8 +60,16 @@ export async function handleApiRequest(request: Request, ctx: ApiContext): Promi
       return handleServers(request, ctx, user.id, id);
     }
 
+    case "secrets": {
+      return handleSecrets(request, ctx, user.id, id);
+    }
+
     case "tokens": {
       return handleTokens(request, ctx, user.id, id);
+    }
+
+    case "registry": {
+      return handleRegistry(request, url);
     }
 
     case "prefs": {
@@ -73,8 +81,9 @@ export async function handleApiRequest(request: Request, ctx: ApiContext): Promi
         disabledModules?: unknown;
         disabledTools?: unknown;
         enabledSkills?: unknown;
+        liteCatalog?: unknown;
       };
-      const patch: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[] } = {};
+      const patch: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[]; liteCatalog?: boolean } = {};
       if (body.disabledModules !== undefined) {
         if (!Array.isArray(body.disabledModules)) return json(400, { error: "disabledModules must be an array" });
         patch.disabledModules = body.disabledModules.map(String);
@@ -86,6 +95,10 @@ export async function handleApiRequest(request: Request, ctx: ApiContext): Promi
       if (body.enabledSkills !== undefined) {
         if (!Array.isArray(body.enabledSkills)) return json(400, { error: "enabledSkills must be an array" });
         patch.enabledSkills = body.enabledSkills.map(String);
+      }
+      if (body.liteCatalog !== undefined) {
+        if (typeof body.liteCatalog !== "boolean") return json(400, { error: "liteCatalog must be a boolean" });
+        patch.liteCatalog = body.liteCatalog;
       }
       ctx.db.setPrefs(user.id, patch);
       ctx.invalidateUser(user.id);
@@ -124,11 +137,12 @@ function resolveSkills(raw: string[], all: Set<string>): string[] {
   return raw.includes("*") ? [...all] : raw;
 }
 
-/** The user's prefs (modules/tools/skills) with the always-new-user defaults. */
+/** The user's prefs (modules/tools/skills/catalog-mode) with the always-new-user defaults. */
 function prefsPayload(ctx: ApiContext, userId: string): {
   disabledModules: string[];
   disabledTools: string[];
   enabledSkills: string[];
+  liteCatalog: boolean;
 } {
   const prefs = ctx.db.getPrefs(userId);
   const parse = (v: string | undefined): string[] => {
@@ -145,6 +159,8 @@ function prefsPayload(ctx: ApiContext, userId: string): {
     disabledModules: prefs ? parse(prefs.disabledModules) : [],
     disabledTools: prefs ? parse(prefs.disabledTools) : [],
     enabledSkills: prefs ? resolveSkills(parse(prefs.enabledSkills), all) : [...all],
+    // New users (no row) default to the lite catalog, same as prefsFor().
+    liteCatalog: prefs ? prefs.liteCatalog === 1 : true,
   };
 }
 
@@ -184,7 +200,7 @@ async function handleServers(
 }
 
 function listServers(ctx: ApiContext, userId: string): Response {
-  return json(200, { servers: ctx.db.listServers(userId).map(decryptServer(ctx.db, ctx.secret)) });
+  return json(200, { servers: ctx.db.listServers(userId).map((row) => serverDto(row, ctx.secret)) });
 }
 
 async function createServer(request: Request, ctx: ApiContext, userId: string): Promise<Response> {
@@ -215,16 +231,16 @@ async function createServer(request: Request, ctx: ApiContext, userId: string): 
     url: type === "http" ? String(body.url) : undefined,
     headersEnc:
       type === "http" && typeof body.headers === "object" && body.headers !== null
-        ? encryptSecret(JSON.stringify(body.headers), ctx.secret)
+        ? encryptStringMap(body.headers, ctx.secret)
         : undefined,
     envEnc:
       typeof body.env === "object" && body.env !== null
-        ? encryptSecret(JSON.stringify(body.env), ctx.secret)
+        ? encryptStringMap(body.env, ctx.secret)
         : undefined,
     enabled: 1,
   });
   ctx.invalidateUser(userId);
-  return json(201, { server: decryptServer(db, ctx.secret)(row) });
+  return json(201, { server: serverDto(row, ctx.secret) });
 }
 
 async function patchServer(request: Request, ctx: ApiContext, userId: string, id: string): Promise<Response> {
@@ -240,15 +256,15 @@ async function patchServer(request: Request, ctx: ApiContext, userId: string, id
   if (typeof body.url === "string") fields.url = body.url;
   if (typeof body.category === "string") fields.category = body.category.trim() || undefined;
   if (body.env !== undefined && typeof body.env === "object" && body.env !== null) {
-    fields.envEnc = encryptSecret(JSON.stringify(body.env), ctx.secret);
+    fields.envEnc = encryptStringMap(body.env, ctx.secret);
   }
   if (body.headers !== undefined && typeof body.headers === "object" && body.headers !== null) {
-    fields.headersEnc = encryptSecret(JSON.stringify(body.headers), ctx.secret);
+    fields.headersEnc = encryptStringMap(body.headers, ctx.secret);
   }
   const updated = db.updateServer(id, userId, fields);
   if (!updated) return json(404, { error: "Server not found" });
   ctx.invalidateUser(userId);
-  return json(200, { server: decryptServer(db, ctx.secret)(updated) });
+  return json(200, { server: serverDto(updated, ctx.secret) });
 }
 
 function removeServer(ctx: ApiContext, userId: string, id: string): Response {
@@ -257,49 +273,92 @@ function removeServer(ctx: ApiContext, userId: string, id: string): Response {
   return json(200, { ok: true });
 }
 
-/** Decrypt secrets and shape a DB row for the dashboard (never leak raw secrets). */
-function decryptServer(db: PlatformDb, secret: string): (row: Awaited<ReturnType<PlatformDb["listServers"]>>[number]) => unknown {
-  return (row) => ({
-    id: row.id,
-    key: row.key,
-    type: row.type,
-    category: row.category ?? null,
-    command: row.command,
-    args: row.args ? safeJson(row.args) : [],
-    cwd: row.cwd,
-    url: row.url,
-    enabled: row.enabled === 1,
-    createdAt: row.createdAt,
-    hasEnv: Boolean(row.envEnc),
-    hasHeaders: Boolean(row.headersEnc),
-    // Show which keys are set, never the values.
-    envKeys: row.envEnc ? Object.keys(safeJson(decryptSecret(row.envEnc, secret)) as Record<string, unknown>) : [],
-    headerKeys: row.headersEnc
-      ? Object.keys(safeJson(decryptSecret(row.headersEnc, secret)) as Record<string, unknown>)
-      : [],
-  });
+/* ---------------- secrets (per-user builtin credentials) ---------------- */
+
+async function handleSecrets(
+  request: Request,
+  ctx: ApiContext,
+  userId: string,
+  key: string | undefined,
+): Promise<Response> {
+  if (request.method === "GET" && !key) {
+    // Report NAMES only — values never leave the encrypted store.
+    const values = decodeSecrets(ctx.db.getSecretsEnc(userId), ctx.secret);
+    return json(200, { allowed: USER_SECRETS, keys: Object.keys(values).sort() });
+  }
+
+  if (request.method === "PUT" && !key) {
+    const body = (await request.json().catch(() => ({}))) as { values?: unknown };
+    if (body.values === null || typeof body.values !== "object" || Array.isArray(body.values)) {
+      return json(400, { error: "Body must be { values: { NAME: string|null } }" });
+    }
+    const patch = body.values as Record<string, unknown>;
+    const unknown = Object.keys(patch).filter((k) => !USER_OVERRIDABLE_ENV.has(k));
+    if (unknown.length) {
+      return json(400, { error: `Not overridable: ${unknown.join(", ")} (allowed: ${[...USER_OVERRIDABLE_ENV].join(", ")})` });
+    }
+    const values = decodeSecrets(ctx.db.getSecretsEnc(userId), ctx.secret);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "") delete values[k];
+      else if (typeof v === "string") values[k] = v;
+      else return json(400, { error: `Value for ${k} must be a string or null` });
+    }
+    if (Object.keys(values).length === 0) ctx.db.deleteSecretsEnc(userId);
+    else ctx.db.setSecretsEnc(userId, encodeSecrets(values, ctx.secret));
+    return json(200, { ok: true, keys: Object.keys(values).sort() });
+  }
+
+  if (request.method === "DELETE" && key) {
+    const values = decodeSecrets(ctx.db.getSecretsEnc(userId), ctx.secret);
+    if (!(key in values)) return json(404, { error: `No stored credential named "${key}"` });
+    delete values[key];
+    if (Object.keys(values).length === 0) ctx.db.deleteSecretsEnc(userId);
+    else ctx.db.setSecretsEnc(userId, encodeSecrets(values, ctx.secret));
+    return json(200, { ok: true });
+  }
+
+  return json(405, { error: "Method not allowed" });
 }
 
-/** Convert a decrypted server row back to an UpstreamServerConfig for the aggregator. */
-export function rowToConfig(row: Awaited<ReturnType<PlatformDb["listServers"]>>[number], secret: string): UpstreamServerConfig {
-  const env = row.envEnc ? (safeJson(decryptSecret(row.envEnc, secret)) as Record<string, string>) : undefined;
-  const headers = row.headersEnc ? (safeJson(decryptSecret(row.headersEnc, secret)) as Record<string, string>) : undefined;
-  if (row.type === "stdio") {
-    return {
-      key: row.key,
-      type: "stdio",
-      command: row.command ?? "",
-      args: row.args ? (safeJson(row.args) as string[]) : [],
-      cwd: row.cwd ?? undefined,
-      env,
-    };
+/* ---------------- official MCP Registry (read-only discovery proxy) ---------------- */
+
+const REGISTRY_BASE = "https://registry.modelcontextprotocol.io/v0/servers";
+
+/**
+ * Proxy + flatten the official registry search so the dashboard can import
+ * remote servers without exposing CORS/keys client-side. Fixed upstream host
+ * (no user-controlled URLs) and a hard timeout.
+ */
+async function handleRegistry(request: Request, url: URL): Promise<Response> {
+  if (request.method !== "GET") return json(405, { error: "Method not allowed" });
+  const search = url.searchParams.get("search")?.trim() ?? "";
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 10, 1), 25);
+  const target = new URL(REGISTRY_BASE);
+  target.searchParams.set("limit", String(limit));
+  if (search) target.searchParams.set("search", search);
+  let upstream: Response;
+  try {
+    upstream = await withTimeout(fetch(target, { headers: { Accept: "application/json" } }), 10_000, "MCP Registry");
+  } catch (err) {
+    return json(502, { error: err instanceof Error ? err.message : "Registry unreachable" });
   }
-  return {
-    key: row.key,
-    type: "http",
-    url: row.url ?? "",
-    headers,
-  };
+  if (!upstream.ok) return json(502, { error: `MCP Registry responded ${upstream.status}` });
+  const data = (await upstream.json().catch(() => null)) as {
+    servers?: { server?: { name?: string; description?: string; version?: string; repository?: { url?: string }; remotes?: { type?: string; url?: string }[] } }[];
+  } | null;
+  const servers = (data?.servers ?? [])
+    .map((e) => e.server ?? {})
+    .filter((s) => s.remotes?.length)
+    .map((s) => ({
+      name: s.name ?? "",
+      description: s.description ?? "",
+      version: s.version ?? "",
+      repository: s.repository?.url ?? "",
+      url: s.remotes?.[0]?.url ?? "",
+      transport: s.remotes?.[0]?.type ?? "streamable-http",
+    }))
+    .filter((s) => /^https:\/\//.test(s.url));
+  return json(200, { servers });
 }
 
 /* ---------------- tokens ---------------- */
@@ -340,12 +399,4 @@ async function handleTokens(
   }
 
   return json(405, { error: "Method not allowed" });
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
 }

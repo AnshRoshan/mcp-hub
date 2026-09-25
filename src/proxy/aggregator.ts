@@ -1,6 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import type { UpstreamServerConfig } from "../config.js";
-import { UpstreamServer, type ProxiedTool } from "./upstream.js";
+import { UpstreamServer, type ProxiedTool, type ProxiedResource } from "./upstream.js";
 
 export interface UpstreamSummary {
   key: string;
@@ -8,7 +8,14 @@ export interface UpstreamSummary {
   detail: string;
   state: "connected" | "error";
   toolCount: number;
+  resourceCount?: number;
   error?: string;
+}
+
+/** A resource plus the closure that reads it from its owning upstream. */
+export interface ProxiedResourceEntry {
+  resource: ProxiedResource;
+  read: () => Promise<unknown>;
 }
 
 export class UpstreamAggregator {
@@ -18,16 +25,21 @@ export class UpstreamAggregator {
   async connectAll(configs: UpstreamServerConfig[]): Promise<void> {
     await this.disconnectAll();
     for (const config of configs) {
-      const server = new UpstreamServer(config);
-      this.servers.push(server);
-      try {
-        await server.connect();
-        console.error(`[mcp-workstation]   ✔ ${config.key}: ${server.tools.length} tools`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        server.status = { state: "error", error: message };
-        console.error(`[mcp-workstation]   ✖ ${config.key}: ${message}`);
-      }
+      await this.connectOne(config);
+    }
+  }
+
+  /** Instantiate, register, and connect a single upstream; logs the outcome either way. */
+  private async connectOne(config: UpstreamServerConfig, reconnecting = false): Promise<void> {
+    const server = new UpstreamServer(config);
+    this.servers.push(server);
+    try {
+      await server.connect();
+      console.error(`[mcp-workstation]   ✔ ${config.key}${reconnecting ? " (reconnected)" : ""}: ${server.tools.length} tools`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      server.status = { state: "error", error: message };
+      console.error(`[mcp-workstation]   ✖ ${config.key}${reconnecting ? " (reconnect failed)" : ""}: ${message}`);
     }
   }
 
@@ -40,6 +52,22 @@ export class UpstreamAggregator {
   /** All proxied tools across all connected servers. */
   allTools(): ProxiedTool[] {
     return this.servers.flatMap((s) => s.tools);
+  }
+
+  /** All proxied resources across connected servers, first-wins on URI clash. */
+  allResources(): ProxiedResourceEntry[] {
+    const byUri = new Map<string, ProxiedResourceEntry>();
+    for (const server of this.servers) {
+      for (const resource of server.resources) {
+        if (byUri.has(resource.uri)) {
+          console.error(`[mcp-workstation] resource URI collision, keeping first: ${resource.uri}`);
+          continue;
+        }
+        const owning = server;
+        byUri.set(resource.uri, { resource, read: () => owning.readResource(resource.uri) });
+      }
+    }
+    return [...byUri.values()];
   }
 
   /** Find which server owns a namespaced tool name. */
@@ -65,21 +93,11 @@ export class UpstreamAggregator {
   /** Reconnect a single server by key with a fresh config. */
   async reconnect(key: string, config: UpstreamServerConfig): Promise<void> {
     const idx = this.servers.findIndex((s) => s.key === key);
-    const old = idx >= 0 ? this.servers[idx] : null;
-    if (old) {
-      await old.close();
+    if (idx >= 0) {
+      await this.servers[idx].close();
       this.servers.splice(idx, 1);
     }
-    const server = new UpstreamServer(config);
-    this.servers.push(server);
-    try {
-      await server.connect();
-      console.error(`[mcp-workstation]   ✔ ${config.key} (reconnected): ${server.tools.length} tools`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      server.status = { state: "error", error: message };
-      console.error(`[mcp-workstation]   ✖ ${config.key} (reconnect failed): ${message}`);
-    }
+    await this.connectOne(config, true);
   }
 
   /** Get the current connection state of a server by key. */
@@ -99,6 +117,7 @@ export class UpstreamAggregator {
           : s.config.url,
       state: s.status.state,
       toolCount: s.status.state === "connected" ? s.status.toolCount : 0,
+      resourceCount: s.resources.length,
       error: s.status.state === "error" ? s.status.error : undefined,
     }));
   }

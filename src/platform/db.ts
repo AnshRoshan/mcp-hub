@@ -57,6 +57,7 @@ export interface UserPrefsRow {
   disabledModules: string; // JSON array of builtin module names the user turned OFF
   disabledTools: string; // JSON array of individual tool names the user turned OFF
   enabledSkills: string; // JSON array of skill names the user turned ON
+  liteCatalog: number; // 1 = search-first Tier-0 catalog, 0 = full static list
   updatedAt: string;
 }
 
@@ -145,7 +146,21 @@ export class PlatformDb {
         disabled_modules TEXT NOT NULL DEFAULT '[]',
         disabled_tools TEXT NOT NULL DEFAULT '[]',
         enabled_skills TEXT NOT NULL DEFAULT ${SKILLS_ALL_DEFAULT},
+        lite_catalog INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS user_secrets (
+        user_id TEXT PRIMARY KEY,
+        values_enc TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS oauth_clients (
+        client_id TEXT PRIMARY KEY,
+        client_name TEXT NOT NULL,
+        redirect_uris TEXT NOT NULL,
+        created_at TEXT NOT NULL
       );
     `);
 
@@ -173,6 +188,9 @@ export class PlatformDb {
     }
     if (!prefs.has("enabled_skills")) {
       this.db.exec(`ALTER TABLE user_prefs ADD COLUMN enabled_skills TEXT NOT NULL DEFAULT ${SKILLS_ALL_DEFAULT}`);
+    }
+    if (!prefs.has("lite_catalog")) {
+      this.db.exec("ALTER TABLE user_prefs ADD COLUMN lite_catalog INTEGER NOT NULL DEFAULT 0");
     }
   }
 
@@ -284,7 +302,7 @@ export class PlatformDb {
     return this.db
       .prepare(
         `SELECT user_id AS userId, disabled_modules AS disabledModules, disabled_tools AS disabledTools,
-                enabled_skills AS enabledSkills, updated_at AS updatedAt
+                enabled_skills AS enabledSkills, lite_catalog AS liteCatalog, updated_at AS updatedAt
          FROM user_prefs WHERE user_id = ?`,
       )
       .get(userId) as unknown as UserPrefsRow | undefined;
@@ -296,7 +314,7 @@ export class PlatformDb {
    */
   setPrefs(
     userId: string,
-    patch: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[] },
+    patch: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[]; liteCatalog?: boolean },
   ): UserPrefsRow {
     const updatedAt = new Date().toISOString();
     const existing = this.getPrefs(userId);
@@ -312,16 +330,19 @@ export class PlatformDb {
     const disabledModules = json("disabledModules", patch.disabledModules);
     const disabledTools = json("disabledTools", patch.disabledTools);
     const enabledSkills = json("enabledSkills", patch.enabledSkills);
+    // Fresh rows default to the lite catalog — matching prefsFor's "no row →
+    // lite" — so merely toggling a module never silently switches mode.
+    const liteCatalog = patch.liteCatalog !== undefined ? (patch.liteCatalog ? 1 : 0) : (existing?.liteCatalog ?? 1);
     this.db
       .prepare(
-        `INSERT INTO user_prefs (user_id, disabled_modules, disabled_tools, enabled_skills, updated_at)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO user_prefs (user_id, disabled_modules, disabled_tools, enabled_skills, lite_catalog, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (user_id) DO UPDATE SET
-           disabled_modules = ?, disabled_tools = ?, enabled_skills = ?, updated_at = ?`,
+           disabled_modules = ?, disabled_tools = ?, enabled_skills = ?, lite_catalog = ?, updated_at = ?`,
       )
-      .run(userId, disabledModules, disabledTools, enabledSkills, updatedAt,
-        disabledModules, disabledTools, enabledSkills, updatedAt);
-    return { userId, disabledModules, disabledTools, enabledSkills, updatedAt };
+      .run(userId, disabledModules, disabledTools, enabledSkills, liteCatalog, updatedAt,
+        disabledModules, disabledTools, enabledSkills, liteCatalog, updatedAt);
+    return { userId, disabledModules, disabledTools, enabledSkills, liteCatalog, updatedAt };
   }
 
   /** Modules the user has explicitly disabled (empty = all builtins on). */
@@ -346,5 +367,45 @@ export class PlatformDb {
     const prefs = this.getPrefs(userId);
     if (!prefs) return new Set();
     return safeJsonSet(prefs.enabledSkills);
+  }
+
+  /* ---------------- user_secrets ----------------
+   * Per-user builtin credentials, stored as ONE opaque encrypted blob
+   * (encrypted/decrypted by the serverConfig codec — the DB never sees keys).
+   */
+
+  getSecretsEnc(userId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT values_enc AS valuesEnc FROM user_secrets WHERE user_id = ?")
+      .get(userId) as unknown as { valuesEnc: string } | undefined;
+    return row?.valuesEnc;
+  }
+
+  setSecretsEnc(userId: string, valuesEnc: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO user_secrets (user_id, values_enc, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET values_enc = ?, updated_at = ?`,
+      )
+      .run(userId, valuesEnc, new Date().toISOString(), valuesEnc, new Date().toISOString());
+  }
+
+  deleteSecretsEnc(userId: string): boolean {
+    const res = this.db.prepare("DELETE FROM user_secrets WHERE user_id = ?").run(userId);
+    return res.changes > 0;
+  }
+
+  /* ---------------- oauth_clients ---------------- */
+
+  insertOAuthClient(clientId: string, clientName: string, redirectUrisJson: string): void {
+    this.db
+      .prepare("INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)")
+      .run(clientId, clientName, redirectUrisJson, new Date().toISOString());
+  }
+
+  getOAuthClient(clientId: string): { clientId: string; clientName: string; redirectUris: string } | undefined {
+    return this.db
+      .prepare("SELECT client_id AS clientId, client_name AS clientName, redirect_uris AS redirectUris FROM oauth_clients WHERE client_id = ?")
+      .get(clientId) as unknown as { clientId: string; clientName: string; redirectUris: string } | undefined;
   }
 }

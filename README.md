@@ -141,7 +141,25 @@ npm run stdio
 - Built on **SDK v2** (`@modelcontextprotocol/server` + `@modelcontextprotocol/client`),
   web-standards based, with the client auto-negotiating protocol era against upstreams.
 
+## MCP Registry integration
+
+- **Discover & import:** the dashboard Directory searches the **official MCP
+  Registry** (`registry.modelcontextprotocol.io`) live — one click adds any
+  remote server to your account as a namespaced upstream (`/api/registry` is a
+  read-only, session-gated proxy; no keys leave the server side).
+- **Publish our hub:** `registry/server.json` is a valid entry
+  (`io.github.anshace/mcp-workstation`, validated offline against the vendored
+  official schema via `npm run validate:registry`). To list it publicly: point
+  the remote `url` at your deployed instance, claim the namespace via GitHub,
+  and submit with the official [`mcp-publisher`](https://github.com/modelcontextprotocol/registry) CLI.
+
 ## Built-in tools (no API keys needed for the core set)
+
+> In platform mode the key-gated modules (`github`, `jira`, `search`, `notion`,
+> `slack`) are **per-user**: each account can store its own credentials on the
+> dashboard's **Credentials** page (API: `/api/secrets`, encrypted at rest,
+> never displayed back) and those shadow the server's process env — so one
+> user's `gh_*` calls never run with another's token.
 
 | Module | Tools | Enabled by |
 |---|---|---|
@@ -158,6 +176,28 @@ npm run stdio
 | `crypto` | `crypto_price`, `crypto_market`, `crypto_trending`, `crypto_search`, `crypto_convert` — live prices, market data and conversions (CoinGecko) | always |
 | `hn` | `hn_top/new/ask/show`, `hn_item`, `hn_search` — Hacker News stories, threads and full-text search | always |
 | `weather` | `weather_current`, `weather_forecast`, `weather_geocode` — conditions & forecasts (Open-Meteo) | always |
+
+## Lite catalog — search-first, token-frugal (on by default for new users)
+
+Every agent pays for `tools/list` in its context window — a full workstation
+catalog is 60+ tools ≈ tens of thousands of tokens. **Lite mode** lists only
+five Tier-0 tools and keeps everything else fully reachable behind them:
+
+| Tool | Role |
+|---|---|
+| `hub_search_tools` | BM25 search over the whole hidden catalog (name + description + module synonyms) |
+| `hub_get_tool` | fetch the exact input schema of any catalog tool |
+| `hub_call` | invoke any catalog tool by name — rate limits and audit apply identically |
+| `workstation_status` / `workstation_reload` | introspection + reload |
+
+Toggle per user on the dashboard (**Modules & Tools → Lite catalog**) or via
+`PUT /api/prefs {"liteCatalog":false}` for clients that want the full static
+list. Retrieval reuses our tool-index work (`src/toolsearch.ts`, unit-tested
+against a 20-probe intent set at ≥90% accuracy).
+
+Oversized tool results (default >200KB, `MAX_RESULT_BYTES`) are spilled to a
+file in the workspace and replaced by a preview + `fs_read` pointer, so one
+chatty upstream never floods the agent's context.
 | `skills` | `skills_list`, `skills_get` — pull your enabled skills' instructions over MCP | always |
 
 > GitHub and Jira both support **enterprise/self-hosted instances** via `GITHUB_API_URL`
@@ -270,9 +310,11 @@ into its own list, prefixed with the server's `key`.
 ## Development
 
 ```bash
+npm run check                 # typecheck + web typecheck + dead-code gate + unit tests
 npm run typecheck         # fast type check (backend)
 npm run typecheck:web     # type check (React dashboard)
-npm test                  # builds + runs the core end-to-end smoke test
+npm run test:unit         # fast unit tests for core modules (no build needed)
+npm test                  # builds + unit tests + the core end-to-end smoke test
 npm run test:platform     # platform mode: signup → tokens → per-user /mcp → isolation
 npm run test:integrations # GitHub + Jira modules against a local mock API (no real credentials)
 npm run dev               # run the backend from source (serves the built dashboard at /)
@@ -298,7 +340,14 @@ src/
     auth.ts           Better Auth instance (Google + GitHub, cookies)
     db.ts             SQLite: auth tables (auto-migrated) + servers/tokens/prefs
     tokens.ts         API-token mint/verify + the /mcp Bearer verifier
-    api.ts            dashboard REST API (servers CRUD, tokens, prefs, skills)
+    api.ts            dashboard REST API (servers CRUD, tokens, prefs, skills,
+                      secrets, registry import proxy)
+    oauth.ts          OAuth 2.1 authorization server for /mcp (RFC 9728/7591:
+                      DCR, consent, PKCE S256 → mcw_ bearer)
+    serverConfig.ts   encrypted server-row codec (shared by core + REST)
+  toolsearch.ts       ephemeral BM25 tool index + module synonym table
+  descli.ts           tool-description quality linter
+  serverConfig → platform/serverConfig.ts  server-row ↔ runtime codec
     skills.ts         loads skills/*.md (frontmatter) into the skills hub
     crypto.ts         AES-256-GCM secret encryption + SHA-256 token hashing
   proxy/
@@ -323,12 +372,18 @@ web/                  the dashboard source — React 19 + Vite + Tailwind CSS v4
     lib/catalog.ts    MCP Directory catalog + connect-guide client configs
     components/       Shell (AppShell + TopNav + SideNav), ui primitives
     views/            Auth, Dashboard, Directory, Connect, Servers, Tokens,
-                      Modules, Skills, Settings
+                      Credentials, Modules, Skills, Settings
+registry/
+  server.json           official MCP Registry entry (publish-ready)
+  server.schema.json    vendored registry schema (offline validation)
 scripts/
   smoke.mjs           core end-to-end test (npm test)
   smoke-platform.mjs  platform-mode end-to-end test (npm run test:platform)
   smoke-ghjira.mjs    GitHub + Jira mock-API test
   test-upstream.mjs   tiny stdio MCP server used by the platform test
+tests/
+  *.test.ts           unit tests for core modules (npm run test:unit) —
+                      utils/config/ratelimit/audit, run via node --test + tsx
 docs/
   ARCHITECTURE.md     how the pieces fit together
 ```
