@@ -77,10 +77,6 @@ export function recordRateLimit(userId: string, toolName: string): void {
   windows.set(k, entry);
 }
 
-export function rateLimitEnabled(): boolean {
-  return enabled;
-}
-
 export function rateLimitInfo(): { enabled: boolean; defaultMax: number; windowMs: number } {
   return { enabled, defaultMax, windowMs };
 }
