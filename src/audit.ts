@@ -50,7 +50,7 @@ function maskSensitive(args: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-export interface AuditEntry {
+interface AuditEntry {
   ts: string;
   correlationId: string;
   userId: string;

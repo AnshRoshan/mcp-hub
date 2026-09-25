@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Badge as AxBadge } from "@astryxdesign/core/Badge";
-import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
-import { Text } from "@astryxdesign/core/Text";
 import { useToast } from "@astryxdesign/core/Toast";
-import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { Check, Copy, Inbox } from "lucide-react";
 import { copyText } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -54,25 +51,6 @@ export function Tag({
 }) {
   const variant = tone === "http" ? "purple" : tone === "stdio" ? "blue" : tone === "official" ? "green" : "neutral";
   return <AxBadge variant={variant} label={children} />;
-}
-
-/* ---------- Stat card ---------- */
-
-export function StatCard({ code, value, label }: { code: string; value: number | string; label: string }) {
-  return (
-    <Card padding={4} className="h-full">
-      <div className="flex h-full flex-col justify-between gap-2">
-        <Tooltip content={<code className="font-mono text-xs">{code}</code>} placement="below" alignment="start">
-          <Text type="label" color="secondary" size="sm" className="uppercase tracking-[0.12em]">
-            {label}
-          </Text>
-        </Tooltip>
-        <Text size="4xl" weight="bold" className="leading-none tabular-nums">
-          {value}
-        </Text>
-      </div>
-    </Card>
-  );
 }
 
 /* ---------- Key/value row ---------- */
