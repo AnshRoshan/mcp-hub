@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.anshace/mcp-workstation",
+  "description": "One MCP endpoint that aggregates many servers plus built-in tools; multi-user, stateless-native.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/anshace/mcp-workstation",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/anshace/mcp-workstation#readme",
+  "docsUrl": "https://github.com/anshace/mcp-workstation/blob/main/docs/ARCHITECTURE.md",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "description": "Self-hosted MCP Workstation endpoint (platform mode). Authenticate with an mcw_ API token per user. Replace the host with your deployment at publish time.",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer API token minted in the dashboard (Tokens page)",
+          "isRequired": true,
+          "format": "string",
+          "value": "Bearer {mcw_api_token}",
+          "variables": {
+            "mcw_api_token": {
+              "description": "Your mcw_ API token from the workstation dashboard",
+              "isRequired": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -78,6 +78,7 @@ export interface MeData {
   disabledModules: string[];
   disabledTools: string[];
   skills: Skill[];
+  liteCatalog: boolean;
 }
 
 export interface ServerBody {
@@ -172,11 +173,53 @@ export const createToken = (name: string) =>
 
 export const revokeToken = (id: string) => api(`/api/tokens/${id}`, { method: "DELETE" });
 
-export const putPrefs = (prefs: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[] }) =>
+export const putPrefs = (prefs: { disabledModules?: string[]; disabledTools?: string[]; enabledSkills?: string[]; liteCatalog?: boolean }) =>
   api("/api/prefs", { method: "PUT", body: JSON.stringify(prefs) });
 
 export const putSkills = (enabledSkills: string[]) =>
   api("/api/skills", { method: "PUT", body: JSON.stringify({ enabledSkills }) });
+
+/* ---- per-user builtin credentials ---- */
+
+export interface SecretSpec {
+  name: string;
+  module: string;
+  label: string;
+  hint?: string;
+}
+
+export interface SecretsData {
+  allowed: SecretSpec[];
+  keys: string[];
+}
+
+export const loadSecrets = () => api<SecretsData>("/api/secrets");
+
+export const putSecret = (name: string, value: string) =>
+  api<{ ok: boolean; keys: string[] }>("/api/secrets", { method: "PUT", body: JSON.stringify({ values: { [name]: value } }) });
+
+export const deleteSecret = (name: string) =>
+  api(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+
+/* ---- official MCP Registry discovery (proxied through /api) ---- */
+
+export interface RegistryServer {
+  name: string;
+  description: string;
+  version: string;
+  repository: string;
+  url: string;
+  transport: string;
+}
+
+export const searchRegistry = (search: string) =>
+  api<{ servers: RegistryServer[] }>(`/api/registry?search=${encodeURIComponent(search)}&limit=10`).then((r) => r.servers || []);
+
+/** Derive a valid server key from a reverse-DNS registry name. */
+export function registryKey(name: string): string {
+  const last = (name.split("/").pop() || name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return ((last || "registry").slice(0, 24)).replace(/_+$/, "") || "registry";
+}
 
 /* ---- helpers ---- */
 

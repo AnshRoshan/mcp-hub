@@ -5,6 +5,7 @@ import { ToastBridge } from "./components/ui";
 import { StoreProvider, useStore, type ViewKey } from "./lib/store";
 import AuthView from "./views/AuthView";
 import Connect from "./views/Connect";
+import Credentials from "./views/Credentials";
 import Dashboard from "./views/Dashboard";
 import Directory from "./views/Directory";
 import Modules from "./views/Modules";
@@ -19,6 +20,7 @@ const VIEWS: Record<ViewKey, () => React.JSX.Element> = {
   connect: Connect,
   servers: Servers,
   tokens: Tokens,
+  credentials: Credentials,
   modules: Modules,
   skills: Skills,
   settings: Settings,

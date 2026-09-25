@@ -5,8 +5,9 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
-import { Plus, Search } from "lucide-react";
+import { Globe, Plus, Search } from "lucide-react";
 import { MCP_CATALOG, catalogTotal, type CatalogEntry } from "../lib/catalog";
+import { errMsg, registryKey, saveServer, searchRegistry, type RegistryServer } from "../lib/api";
 import { useStore } from "../lib/store";
 import { CopyBtn, Tag } from "../components/ui";
 import { catalogIcon, CategoryIcon } from "../components/icons";
@@ -70,7 +71,103 @@ export default function Directory() {
           ))}
         </div>
       )}
+
+      <RegistrySection />
     </div>
+  );
+}
+
+/** Live search against the official MCP Registry (proxied via /api/registry). */
+function RegistrySection() {
+  const { navigate, toast, refreshServers } = useStore();
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState<RegistryServer[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+
+  const runSearch = async () => {
+    if (!term.trim() || busy) return;
+    setBusy(true);
+    try {
+      setResults(await searchRegistry(term.trim()));
+    } catch (err) {
+      toast(errMsg(err, "Registry unreachable"));
+      setResults([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importServer = async (s: RegistryServer) => {
+    setAdding(s.name);
+    try {
+      await saveServer({ key: registryKey(s.name), type: "http", category: "Registry", env: {}, url: s.url });
+      await refreshServers();
+      toast(`Added ${s.name} — connect on the Servers page`);
+      navigate("servers");
+    } catch (err) {
+      toast(errMsg(err, "Add failed"));
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  return (
+    <section className="category-section">
+      <div className="category-header">
+        <span className="category-pill">
+          <CategoryIcon name="Registry" />
+          Official MCP Registry
+        </span>
+        <Text type="label" size="sm" className="text-tertiary">remote servers · live search</Text>
+      </div>
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(e) => { e.preventDefault(); void runSearch(); }}
+      >
+        <div className="max-w-md flex-1">
+          <TextInput
+            label="Search the registry"
+            placeholder="e.g. postgres, sentry, obsidian…"
+            startIcon={Globe}
+            value={term}
+            onChange={setTerm}
+          />
+        </div>
+        <Button label={busy ? "Searching…" : "Search"} variant="secondary" size="sm" type="submit" isDisabled={busy || !term.trim()} />
+      </form>
+      {results !== null && (
+        results.length === 0 ? (
+          <Text type="supporting" size="sm" className="mt-3">No remote servers found{busy ? " (still searching…)" : ""}.</Text>
+        ) : (
+          <div className="capability-list mt-3">
+            {results.map((s) => (
+              <article key={s.name} className="directory-row">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Text weight="semibold">{s.name.split("/").pop()}</Text>
+                    {s.version && <Tag>{s.version}</Tag>}
+                    <Tag tone="http">{s.transport}</Tag>
+                  </div>
+                  <Text type="supporting" size="sm" className="mt-1 leading-relaxed line-clamp-2">{s.description}</Text>
+                  <code className="mt-1 block truncate font-mono text-xs text-secondary" title={s.url}>{s.url}</code>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    label={adding === s.name ? "Adding…" : "Add"}
+                    variant="primary"
+                    size="sm"
+                    icon={<Plus size={14} strokeWidth={2.6} />}
+                    isDisabled={adding !== null}
+                    onClick={() => void importServer(s)}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      )}
+    </section>
   );
 }
 

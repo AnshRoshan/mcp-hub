@@ -9,6 +9,9 @@ export interface ToolDef {
   description: string;
   inputSchema: Record<string, unknown>;
   handler: (args: Record<string, unknown>) => Promise<CallToolResult> | CallToolResult;
+  /** Verbatim tool-level `_meta` (MCP Apps, icons, vendor extensions) — upstream tools only. */
+  _meta?: Record<string, unknown>;
+  title?: string;
 }
 
 export interface ModuleInfo {
@@ -20,7 +23,7 @@ export interface ModuleInfo {
   tools: string[];
 }
 
-/** Mutable tool map — rebuilt on reload. */
+/** Tool map — a fresh instance is built per catalog, never mutated after assembly. */
 export class ToolRegistry {
   private _tools = new Map<string, ToolDef>();
 
@@ -30,10 +33,6 @@ export class ToolRegistry {
 
   entries(): ToolDef[] {
     return [...this._tools.values()];
-  }
-
-  clear(): void {
-    this._tools.clear();
   }
 }
 

@@ -44,6 +44,15 @@ export default function Modules() {
     }
   };
 
+  const toggleLite = async (checked: boolean) => {
+    try {
+      await putPrefs({ liteCatalog: checked });
+      setMe(me ? { ...me, liteCatalog: checked } : me);
+    } catch (err) {
+      toast(errMsg(err, "Update failed"));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <div className="page-intro">
@@ -54,6 +63,25 @@ export default function Modules() {
           </Text>
         </div>
         <Button label="Browse directory" variant="secondary" size="sm" icon={<ExternalLink size={13} />} onClick={() => navigate("directory")} />
+      </div>
+
+      <div className="capability-list">
+        <div className="capability-row">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+              <span className="text-primary">Lite catalog (search-first)</span>
+              <Badge tone={me?.liteCatalog ? "ok" : "neutral"}>{me?.liteCatalog ? "on" : "off"}</Badge>
+            </div>
+            <Text type="supporting" size="sm" className="mt-0.5 max-w-[80ch]">
+              Expose only the hub tools (<code>hub_search_tools</code>, <code>hub_get_tool</code>, <code>hub_call</code>)
+              and hide the rest behind them, so an agent's <code>tools/list</code> costs a fraction of the tokens.
+              Best for clients with large catalogs; turn off to list every tool statically.
+            </Text>
+          </div>
+          <div className="flex flex-none items-center gap-2">
+            <Switch label="Lite catalog" value={Boolean(me?.liteCatalog)} onChange={toggleLite} />
+          </div>
+        </div>
       </div>
 
       {Object.entries(byCategory).map(([category, modules]) => {

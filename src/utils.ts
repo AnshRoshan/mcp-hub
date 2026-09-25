@@ -1,5 +1,29 @@
 /** Small shared helpers: env access, argument coercion, HTTP JSON calls. */
 
+/**
+ * Where a module reads credentials/config from. In platform mode each user
+ * gets a layered source: their own secrets first, then process env — so a
+ * builtin's GitHub/Notion/Slack calls can run as the requesting user, not
+ * the server owner.
+ */
+export interface EnvSource {
+  get(name: string): string | undefined;
+}
+
+export const processEnv: EnvSource = {
+  get: (name) => env(name),
+};
+
+/** Lookup in `primary`, falling back to `secondary` for unset names. */
+export function layeredEnv(primary: Record<string, string | undefined>, secondary: EnvSource): EnvSource {
+  return {
+    get: (name) => {
+      const v = primary[name];
+      return v !== undefined && v.trim() !== "" ? v.trim() : secondary.get(name);
+    },
+  };
+}
+
 export function env(name: string): string | undefined {
   const v = process.env[name];
   return v !== undefined && v.trim() !== "" ? v.trim() : undefined;

@@ -9,7 +9,7 @@ import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import {
-  Blocks, Cable, Compass, KeyRound, LayoutDashboard, LogOut, Server, Settings, Sparkles, Zap,
+  Blocks, Cable, Compass, KeyRound, LayoutDashboard, LogOut, Server, Settings, ShieldCheck, Sparkles, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { signOut } from "../lib/api";
@@ -35,6 +35,7 @@ const NAV: { group: string; color: string; items: { view: ViewKey; label: string
     items: [
       { view: "servers", label: "Servers", Icon: Server },
       { view: "tokens", label: "API Tokens", Icon: KeyRound },
+      { view: "credentials", label: "Credentials", Icon: ShieldCheck },
       { view: "modules", label: "Modules & Tools", Icon: Blocks },
       { view: "skills", label: "Skills", Icon: Sparkles },
     ],

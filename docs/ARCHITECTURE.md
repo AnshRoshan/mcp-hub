@@ -37,10 +37,12 @@ That shapes this codebase:
 - **No sessions, ever.** `src/http.ts` keeps no session map. `createMcpHandler`
   from the SDK serves each request with a **fresh `McpServer` instance** built by
   the factory in `src/server.ts`.
-- **Fresh tool catalog per request.** The factory reads the shared
-  `ToolRegistry` when it builds each server. `workstation_reload` just rebuilds
-  the registry — the very next request already sees the new tools. No
-  re-registration dance, no `list_changed` bookkeeping needed.
+- **Catalogs are pure, immutable snapshots.** `assembleCatalog(prefs, upstreams)`
+  builds a complete tool list + status snapshot from its inputs only — no shared
+  mutable registry is cleared and refilled per request. Concurrent users can
+  never observe each other's catalogs, and `workstation_status` / the dashboard
+  report exactly what the calling catalog contains. The *shared* catalog (what
+  the dashboard's `/api/status` shows) is re-assembled only at init and reload.
 - **App-level state is explicit.** Anything that must persist (memory, knowledge
   base, files, databases) is stored in files/SQLite and surfaced through tools —
   per the spec's own recommendation ("mint an explicit handle, pass it back as
@@ -64,9 +66,18 @@ Platform mode turns on when `BETTER_AUTH_SECRET` is set. `src/index.ts` then bui
 - **Tokens** (`src/platform/tokens.ts`) — API tokens are minted as random
   `mcw_…` strings, stored as **SHA-256 hashes**, and verified per request by an
   `OAuthTokenVerifier` consumed by the SDK's `requireBearerAuth`.
+- **Auth discovery** (`src/http.ts`) — `GET /.well-known/oauth-protected-resource`
+  (RFC 9728, both plain and path-suffixed forms) describes the `/mcp` resource,
+  and every 401 challenge carries `resource_metadata="…"` so conformant MCP
+  clients can bootstrap discovery. `authorization_servers` is intentionally
+  absent until a real OAuth authorization server ships (see the research
+  report's S2 remaining work).
 - **REST API** (`src/platform/api.ts`) — session-aware CRUD: a user's servers
   (stdio/http, with env/headers **AES-256-GCM encrypted** at rest via
-  `src/platform/crypto.ts`), API tokens, and module preferences.
+  `src/platform/crypto.ts`), API tokens, module preferences, and per-user
+  builtin credentials (`/api/secrets` — names readable, values write-only).
+  Row↔runtime translation lives in `src/platform/serverConfig.ts` so neither
+  the core nor the API layer depends on the other.
 
 ### Per-user tool catalogs
 
@@ -74,16 +85,46 @@ The MCP factory in `src/server.ts` is the key piece. Each request:
 
 1. `requireBearerAuth` validates the `Authorization` header against the token
    store, producing an `AuthInfo` whose `extra.userId` identifies the caller.
-2. The factory reads `ctx.authInfo` and builds an `McpServer` from:
-   - **shared built-in modules** (filtered by the user's `disabledModules` prefs),
+2. The factory reads `ctx.authInfo` and assembles an `McpServer` from:
+   - **built-in modules built with the caller's `EnvSource`** — a layered
+     lookup where the user's stored credentials (GitHub, Jira, Notion, Slack,
+     search providers) shadow process env, so `gh_*` actually runs as the
+     requesting user; without their own token a module is disabled *for them*
+     (or enabled via the operator's env, as before),
    - **the shared upstream aggregator** (`config/servers.json` — operator-curated),
    - **a per-user upstream aggregator** — lazily connected from the user's
-     enabled server rows, cached per user, torn down on server changes via
-     `invalidateUser()`.
+     enabled server rows; connections are **single-flight** (concurrent first
+     requests share one connect), **idle-evicted** (`USER_SESSION_TTL_MS`,
+     default 15 min) and **LRU-capped** (`MAX_USER_SESSIONS`, default 50), and
+     torn down on server changes via `invalidateUser()` — including teardown of
+     a connect that hasn't finished yet.
 
-Users never see each other's servers: the catalog for a request only ever contains
-that user's rows. `workstation_status` snapshots the build, so it reports the exact
-catalog the caller sees.
+Users never see each other's servers or credentials: the catalog for a request
+only ever contains that user's rows, prefs, and secret layer. `workstation_status`
+snapshots the assembled catalog, so it reports the exact view the caller sees.
+
+### Lite catalog (search-first exposure)
+
+In lite mode (`prefs.lite`, ON for new platform users) `assembleCatalog` splits
+the assembled tool set: Tier-0 (`workstation_status`, `workstation_reload`) is
+listed, everything else lands in an immutable `hidden` map plus a `ToolIndex`
+(`src/toolsearch.ts` — ephemeral in-memory BM25 over tool names, description
+phrases, and a curated per-module synonym table). `createMcpInstance` then
+registers three gateway meta-tools — `hub_search_tools`, `hub_get_tool`,
+`hub_call` — where `hub_call` routes hidden tools through the **same**
+rate-limit → audit → invoke pipeline (`runTool`) as directly-listed tools, so
+the exposure mode never changes enforcement. Tool results above
+`MAX_RESULT_BYTES` are spilled to `results/<correlationId>.json` under the
+first filesystem root and replaced by a preview + `fs_read` pointer.
+`tools/list` cache scope is `private` in platform mode (per-user catalogs must
+never share a cache).
+
+### CORS policy
+
+`/mcp` is Bearer-gated, not cookie-gated, so it allows any origin (`*`).
+`/api/*` uses session cookies, so it only echoes origins listed in
+`CORS_ALLOWED_ORIGINS` (empty by default — same-origin only; the Vite dev
+server proxies, so the dashboard needs no cross-origin allowance).
 
 ## Tool model
 

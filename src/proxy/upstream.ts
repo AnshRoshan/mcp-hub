@@ -17,6 +17,14 @@ export interface ProxiedTool {
   description: string;
   /** JSON Schema for the tool's input (from the upstream). */
   inputSchema: Record<string, unknown>;
+  /**
+   * Tool-level `_meta` from the upstream (verbatim) — carries MCP Apps
+   * (`io.modelcontextprotocol/ui`), icons, and vendor extensions, so
+   * app-capable clients rendering through the hub still see them.
+   */
+  meta?: Record<string, unknown>;
+  /** Human title advertised by the upstream, if any. */
+  title?: string;
 }
 
 /** Make a stable, collision-free namespaced name. */
@@ -26,6 +34,16 @@ function namespace(key: string, toolName: string): string {
   return `${clean(key)}_${clean(toolName)}`;
 }
 
+/** A resource exposed by an upstream server, passed through with its URI VERBATIM
+ *  (tool `_meta` references these URIs, e.g. MCP Apps `ui://…`). */
+export interface ProxiedResource {
+  uri: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+}
+
 export type UpstreamStatus =
   | { state: "connected"; toolCount: number }
   | { state: "error"; error: string };
@@ -33,6 +51,7 @@ export type UpstreamStatus =
 export class UpstreamServer {
   readonly config: UpstreamServerConfig;
   tools: ProxiedTool[] = [];
+  resources: ProxiedResource[] = [];
   status: UpstreamStatus = { state: "error", error: "not connected" };
 
   private client: Client | null = null;
@@ -76,9 +95,30 @@ export class UpstreamServer {
         originalName: tool.name,
         description: tool.description ?? "",
         inputSchema: (tool.inputSchema as Record<string, unknown> | undefined) ?? { type: "object" },
+        meta: (tool as { _meta?: Record<string, unknown> })._meta,
+        title: (tool as { title?: string }).title,
       });
     }
     this.status = { state: "connected", toolCount: this.tools.length };
+
+    // Resources are optional upstream capability: failures just yield an empty list.
+    try {
+      const listedRes = await withTimeout(client.listResources(), 10_000, `list resources of "${this.key}"`);
+      this.resources = listedRes.resources.map((r) => ({
+        uri: r.uri,
+        name: r.name ?? r.uri.split("/").pop() ?? r.uri,
+        title: r.title,
+        description: r.description,
+        mimeType: r.mimeType,
+      }));
+    } catch {
+      this.resources = [];
+    }
+  }
+
+  async readResource(uri: string): Promise<unknown> {
+    if (!this.client) throw new Error(`Upstream server "${this.key}" is not connected`);
+    return withTimeout(this.client.readResource({ uri }), CALL_TIMEOUT_MS, `read resource "${this.key}/${uri}"`);
   }
 
   // fallow-ignore-next-line unused-class-member
@@ -110,6 +150,7 @@ export class UpstreamServer {
     }
     this.client = null;
     this.tools = [];
+    this.resources = [];
   }
 }
 

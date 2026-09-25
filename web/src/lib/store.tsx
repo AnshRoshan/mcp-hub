@@ -5,7 +5,7 @@ import {
 } from "./api";
 import type { CatalogEntry } from "./catalog";
 
-export type ViewKey = "dashboard" | "directory" | "connect" | "servers" | "tokens" | "modules" | "skills" | "settings";
+export type ViewKey = "dashboard" | "directory" | "connect" | "servers" | "tokens" | "credentials" | "modules" | "skills" | "settings";
 type Phase = "loading" | "platform-off" | "auth" | "app";
 
 interface ToastMsg { id: number; text: string }
@@ -88,6 +88,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         await refreshAll();
         setPhase("app");
+        // Resume an OAuth authorize round-trip the server parked here pre-login.
+        const next = new URLSearchParams(window.location.search).get("authorize_return");
+        if (next && next.startsWith("/oauth/authorize")) window.location.href = next;
       } catch {
         setPhase("auth");
       }

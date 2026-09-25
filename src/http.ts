@@ -8,9 +8,11 @@ import type { AuthInfo, McpHttpHandler } from "@modelcontextprotocol/server";
 import { requireBearerAuth } from "@modelcontextprotocol/server";
 import type { PlatformAuth } from "./platform/auth.js";
 import { handleApiRequest, type ApiContext } from "./platform/api.js";
+import { handleOAuthRequest } from "./platform/oauth.js";
 import { createMcpTokenVerifier } from "./platform/tokens.js";
 import type { PlatformDb } from "./platform/db.js";
 import type { Skill } from "./platform/skills.js";
+import { env } from "./utils.js";
 
 export interface HttpOptions {
   port: number;
@@ -34,6 +36,16 @@ interface JsonRpcMessage {
 }
 
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
+
+/**
+ * Origins allowed to call /api/* cross-origin with credentials. The dashboard
+ * is served same-origin (and the Vite dev server proxies), so the default is
+ * empty — cookie auth over wildcard CORS is never enabled. `/mcp` stays
+ * `*` because it is Bearer-token gated, not cookie gated.
+ */
+const ALLOWED_ORIGINS = new Set(
+  (env("CORS_ALLOWED_ORIGINS") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+);
 
 /**
  * Start the HTTP server. Serves, on one port:
@@ -62,60 +74,47 @@ export function startHttp(
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-      // ---- CORS (MCP clients + dashboard) ----
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, Mcp-Session-Id, Mcp-Method, Mcp-Name, Mcp-Protocol-Version, Cookie",
-      );
-      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Credentials", "true");
+      // ---- CORS ----
+      applyCors(req, res, url.pathname.startsWith("/api"));
       if (req.method === "OPTIONS") {
         res.writeHead(204);
         res.end();
         return;
       }
 
-      // ---- Better Auth routes ----
-      if (url.pathname.startsWith("/api/auth/")) {
-        if (!platform) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Platform mode is off (set BETTER_AUTH_SECRET)" }));
-          return;
-        }
-        // Legacy URL compatibility: Better Auth 1.6 only accepts
-        // POST /api/auth/sign-in/social, but old dashboard versions (and
-        // cached pages / hand-typed URLs) use GET ?provider=&callbackURL=.
-        // Translate that GET into the POST flow and 302-redirect to Google.
-        if (url.pathname.endsWith("/sign-in/social") && req.method === "GET") {
-          await routeLegacySocialGet(req, res, url, platform.auth);
-          return;
-        }
-        await routeAuth(req, res, url, platform.auth);
-        return;
-      }
-
-      // ---- Dashboard REST API ----
-      if (url.pathname.startsWith("/api/") && platform) {
-        const ctx: ApiContext = {
-          db: platform.db,
-          auth: platform.auth,
-          secret: platform.secret,
-          invalidateUser: platform.invalidateUser,
-          status: platform.status,
-          platformOn: true,
-          skills: platform.skills,
-        };
+      // ---- OAuth 2.1 authorization server for /mcp (platform mode) ----
+      if (platform && (url.pathname === "/.well-known/oauth-authorization-server" ||
+          url.pathname === "/register" ||
+          url.pathname.startsWith("/oauth/"))) {
         const request = await toBodyRequest(req, url);
-        const response = await handleApiRequest(request, ctx);
+        const response = await handleOAuthRequest(request, url, { db: platform.db, auth: platform.auth });
         await writeResponse(res, response);
         return;
       }
 
+      // ---- OAuth protected-resource metadata (RFC 9728) ----
+      // Both the plain and the path-suffixed forms (§3.1) of the well-known URI.
+      if (url.pathname === "/.well-known/oauth-protected-resource" ||
+          url.pathname.startsWith("/.well-known/oauth-protected-resource/")) {
+        json(res, 200, {
+          resource: `${url.origin}${mcpPath}`,
+          resource_name: "MCP Workstation",
+          bearer_methods_supported: ["header"],
+          ...(platform ? { authorization_servers: [url.origin] } : {}),
+        });
+        return;
+      }
+
+      // ---- Better Auth routes ----
+      if (url.pathname.startsWith("/api/auth/")) {
+        await routeAuthBlock(req, res, url);
+        return;
+      }
+
+      // ---- Dashboard REST API ----
       if (url.pathname.startsWith("/api/")) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Platform mode is off (set BETTER_AUTH_SECRET)" }));
+        if (platform) await routeApi(req, res, url);
+        else json(res, 404, { error: "Platform mode is off (set BETTER_AUTH_SECRET)" });
         return;
       }
 
@@ -125,57 +124,101 @@ export function startHttp(
         return;
       }
 
-      // ---- MCP endpoint ----
       if (url.pathname !== mcpPath) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Not found" }));
+        json(res, 404, { error: "Not found" });
         return;
       }
-
-      const sessionIdHeader = req.headers["mcp-session-id"];
-      const sseId = url.searchParams.get("sessionId");
-
-      // Legacy HTTP+SSE bridge: GET opens the stream (announced via `endpoint`).
-      // In platform mode the stream itself requires a valid Bearer token.
-      if (req.method === "GET" && typeof sessionIdHeader !== "string" && sseId === null) {
-        if (bearerGate) {
-          const auth = await bearerGate(toRequest(req, url));
-          if (auth instanceof Response) {
-            await writeResponse(res, auth);
-            return;
-          }
-        }
-        openSseStream(res, mcpPath, sseStreams);
-        return;
-      }
-      // Legacy HTTP+SSE bridge: POSTs to ?sessionId=… deliver messages.
-      if (req.method === "POST" && sseId !== null) {
-        await handleSsePost(req, res, sseId, sseStreams, mcpHandler, url, bearerGate);
-        return;
-      }
-
-      // ---- Modern stateless Streamable HTTP ----
-      if (bearerGate) {
-        const auth = await bearerGate(toRequest(req, url));
-        if (auth instanceof Response) {
-          await writeResponse(res, auth);
-          return;
-        }
-        // toNodeHandler forwards `req.auth` as the handler's authInfo.
-        (req as unknown as { auth: unknown }).auth = auth;
-        await nodeHandler(req, res);
-      } else {
-        await nodeHandler(req, res);
-      }
+      await routeMcp(req, res, url);
     } catch (err) {
       if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: `Internal error: ${err instanceof Error ? err.message : String(err)}` }));
+        json(res, 500, { error: `Internal error: ${err instanceof Error ? err.message : String(err)}` });
       } else {
         res.destroy();
       }
     }
   });
+
+  /** Better Auth (Google/GitHub sign-in, sessions) — platform mode only. */
+  async function routeAuthBlock(
+    req: http.IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    if (!platform) {
+      json(res, 404, { error: "Platform mode is off (set BETTER_AUTH_SECRET)" });
+      return;
+    }
+    // Legacy URL compatibility: Better Auth 1.6 only accepts
+    // POST /api/auth/sign-in/social, but old dashboard versions (and
+    // cached pages / hand-typed URLs) use GET ?provider=&callbackURL=.
+    // Translate that GET into the POST flow and 302-redirect to Google.
+    if (url.pathname.endsWith("/sign-in/social") && req.method === "GET") {
+      await routeLegacySocialGet(req, res, url, platform.auth);
+      return;
+    }
+    await routeAuth(req, res, url, platform.auth);
+  }
+
+  /** Dashboard REST API: convert to a web Request and let the API router answer. */
+  async function routeApi(
+    req: http.IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    const ctx: ApiContext = {
+      db: platform!.db,
+      auth: platform!.auth,
+      secret: platform!.secret,
+      invalidateUser: platform!.invalidateUser,
+      status: platform!.status,
+      platformOn: true,
+      skills: platform!.skills,
+    };
+    const request = await toBodyRequest(req, url);
+    const response = await handleApiRequest(request, ctx);
+    await writeResponse(res, response);
+  }
+
+  /** The MCP endpoint: legacy SSE bridge requests, or modern stateless Streamable HTTP. */
+  async function routeMcp(
+    req: http.IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    const sessionIdHeader = req.headers["mcp-session-id"];
+    const sseId = url.searchParams.get("sessionId");
+
+    // Legacy HTTP+SSE bridge: GET opens the stream (announced via `endpoint`).
+    // In platform mode the stream itself requires a valid Bearer token.
+    if (req.method === "GET" && typeof sessionIdHeader !== "string" && sseId === null) {
+      if (bearerGate) {
+        const auth = await bearerGate(toRequest(req, url));
+        if (auth instanceof Response) {
+          await writeResponse(res, withResourceMetadata(auth, url.origin));
+          return;
+        }
+      }
+      openSseStream(res, mcpPath, sseStreams);
+      return;
+    }
+    // Legacy HTTP+SSE bridge: POSTs to ?sessionId=… deliver messages.
+    if (req.method === "POST" && sseId !== null) {
+      await handleSsePost(req, res, sseId, sseStreams, mcpHandler, url, bearerGate);
+      return;
+    }
+
+    // ---- Modern stateless Streamable HTTP ----
+    if (bearerGate) {
+      const auth = await bearerGate(toRequest(req, url));
+      if (auth instanceof Response) {
+        await writeResponse(res, withResourceMetadata(auth, url.origin));
+        return;
+      }
+      // toNodeHandler forwards `req.auth` as the handler's authInfo.
+      (req as unknown as { auth: unknown }).auth = auth;
+    }
+    await nodeHandler(req, res);
+  }
 
   httpServer.listen(port, () => {
     console.error(`[mcp-workstation] listening on http://localhost:${port}${mcpPath}`);
@@ -214,8 +257,7 @@ async function routeLegacySocialGet(
     url.searchParams.get("redirectTo") ??
     `${url.origin}/`;
   if (!provider) {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Missing provider query parameter" }));
+    json(res, 400, { error: "Missing provider query parameter" });
     return;
   }
 
@@ -236,8 +278,7 @@ async function routeLegacySocialGet(
   const data = (await response.json().catch(() => null)) as { url?: string } | null;
   const target = data?.url;
   if (!target) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Sign-in could not start: no authorization URL returned" }));
+    json(res, 500, { error: "Sign-in could not start: no authorization URL returned" });
     return;
   }
   res.writeHead(302, { Location: target });
@@ -245,6 +286,36 @@ async function routeLegacySocialGet(
 }
 
 /* ---------------- helpers ---------------- */
+
+/** Write a JSON body with the given status. */
+function json(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+/**
+ * CORS: `/mcp` (Bearer-gated) is open to any origin; `/api/*` (cookie-gated)
+ * only echoes origins from the explicit allow-list — wildcard is never sent
+ * together with credentials.
+ */
+function applyCors(req: http.IncomingMessage, res: ServerResponse, cookieGated: boolean): void {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  if (cookieGated) {
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Mcp-Session-Id, Mcp-Method, Mcp-Name, Mcp-Protocol-Version, Cookie",
+  );
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+}
 
 /**
  * Header-only web-standard Request (does NOT consume the body stream, so the
@@ -288,6 +359,19 @@ async function writeResponse(res: ServerResponse, response: Response): Promise<v
   res.writeHead(response.status, headers);
   const body = await response.arrayBuffer();
   res.end(Buffer.from(body));
+}
+
+/**
+ * Point 401 challenges at our RFC 9728 protected-resource metadata so
+ * spec-conformant MCP clients can discover the auth model automatically.
+ */
+function withResourceMetadata(response: Response, origin: string): Response {
+  if (response.status !== 401) return response;
+  const headers = new Headers(response.headers);
+  const existing = headers.get("WWW-Authenticate")?.trim() ?? "";
+  const pointer = `resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+  headers.set("WWW-Authenticate", existing.startsWith("Bearer") ? `${existing}, ${pointer}` : `Bearer ${pointer}`);
+  return new Response(response.body, { status: response.status, headers });
 }
 
 /** Serve the dashboard UI from public/. */
@@ -358,8 +442,7 @@ async function handleSsePost(
 ): Promise<void> {
   const stream = streams.get(sseId);
   if (!stream) {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Unknown SSE session" }));
+    json(res, 404, { error: "Unknown SSE session" });
     return;
   }
 
@@ -378,8 +461,7 @@ async function handleSsePost(
   try {
     message = JSON.parse(text) as JsonRpcMessage;
   } catch {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Request body must be valid JSON-RPC" }));
+    json(res, 400, { error: "Request body must be valid JSON-RPC" });
     return;
   }
 
@@ -428,8 +510,7 @@ async function handleSsePost(
       { parsedBody: message, ...(authInfo ? { authInfo } : {}) },
     );
   } catch (err) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: `Internal error: ${err instanceof Error ? err.message : String(err)}` }));
+    json(res, 500, { error: `Internal error: ${err instanceof Error ? err.message : String(err)}` });
     return;
   }
 
