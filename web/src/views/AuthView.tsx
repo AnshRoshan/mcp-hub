@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -8,7 +8,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Heading } from "@astryxdesign/core/Text";
 import { Zap } from "lucide-react";
-import { emailSignIn, errMsg, socialSignIn } from "../lib/api";
+import { emailSignIn, errMsg, getAuthConfig, socialSignIn, type AuthConfig } from "../lib/api";
 import { useStore } from "../lib/store";
 
 function GoogleMark() {
@@ -36,6 +36,16 @@ export default function AuthView() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"google" | "github" | "email" | null>(null);
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+
+  // Only offer sign-in paths the server is actually configured for.
+  useEffect(() => {
+    void getAuthConfig().then((c) => c && setConfig(c));
+  }, []);
+  const googleOn = config?.providers.google ?? true;
+  const githubOn = config?.providers.github ?? true;
+  const emailOn = config?.emailAuth ?? true;
+  const anySocial = googleOn || githubOn;
 
   const onSocial = async (provider: "google" | "github") => {
     setBusy(provider);
@@ -76,25 +86,30 @@ export default function AuthView() {
         </div>
 
         <div className="mt-6 flex flex-col gap-2.5">
-          <Button
-            label={busy === "google" ? "Redirecting…" : "Continue with Google"}
-            variant="secondary"
-            icon={<GoogleMark />}
-            width="100%"
-            isDisabled={busy !== null}
-            onClick={() => onSocial("google")}
-          />
-          <Button
-            label={busy === "github" ? "Redirecting…" : "Continue with GitHub"}
-            variant="secondary"
-            icon={<GitHubMark />}
-            width="100%"
-            isDisabled={busy !== null}
-            onClick={() => onSocial("github")}
-          />
+          {googleOn && (
+            <Button
+              label={busy === "google" ? "Redirecting…" : "Continue with Google"}
+              variant="secondary"
+              icon={<GoogleMark />}
+              width="100%"
+              isDisabled={busy !== null}
+              onClick={() => onSocial("google")}
+            />
+          )}
+          {githubOn && (
+            <Button
+              label={busy === "github" ? "Redirecting…" : "Continue with GitHub"}
+              variant="secondary"
+              icon={<GitHubMark />}
+              width="100%"
+              isDisabled={busy !== null}
+              onClick={() => onSocial("github")}
+            />
+          )}
 
-          <Divider label="or" />
+          {emailOn && anySocial && <Divider label="or" />}
 
+          {emailOn && (
           <form className="flex flex-col gap-2.5" onSubmit={onEmail}>
             <TextInput
               label="Email"
@@ -123,6 +138,7 @@ export default function AuthView() {
               isDisabled={busy !== null && busy !== "email"}
             />
           </form>
+          )}
         </div>
 
         {error && (

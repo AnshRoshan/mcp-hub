@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { withTimeout } from "../utils.js";
+import { env, envBool, withTimeout } from "../utils.js";
 import type { PlatformDb } from "./db.js";
 import type { PlatformAuth } from "./auth.js";
 import { mintToken } from "./tokens.js";
@@ -32,11 +32,22 @@ export async function handleApiRequest(request: Request, ctx: ApiContext): Promi
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean); // e.g. ["api","servers","<id>"]
 
-  const user = await ctx.auth.sessionUser(request.headers);
-  if (!user) return json(401, { error: "Not signed in" });
-
   const [root, resource, id] = parts;
   if (root !== "api") return json(404, { error: "Not found" });
+
+  // Public auth-screen config (pre-session): which sign-in paths actually work.
+  if (resource === "config") {
+    return json(200, {
+      providers: {
+        google: Boolean(env("GOOGLE_CLIENT_ID") && env("GOOGLE_CLIENT_SECRET")),
+        github: Boolean(env("GITHUB_CLIENT_ID") && env("GITHUB_CLIENT_SECRET")),
+      },
+      emailAuth: envBool("ALLOW_EMAIL_AUTH", true),
+    });
+  }
+
+  const user = await ctx.auth.sessionUser(request.headers);
+  if (!user) return json(401, { error: "Not signed in" });
 
   switch (resource) {
     case "me": {

@@ -83,6 +83,10 @@ async function main() {
     const dash = await fetch(`${BASE}/`);
     check("dashboard serves", dash.status === 200);
 
+    const authCfg = await (await fetch(`${BASE}/api/config`)).json();
+    check("public auth config served (pre-session)",
+      !!authCfg?.providers && typeof authCfg.emailAuth === "boolean");
+
     const noTokenGet = await fetch(`${BASE}/mcp`);
     check("GET /mcp without token → 401", noTokenGet.status === 401);
     const noTokenPost = await fetch(`${BASE}/mcp`, {
