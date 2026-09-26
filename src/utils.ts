@@ -65,6 +65,9 @@ export function obj(v: unknown): Record<string, unknown> {
 
 /* ---- HTTP helpers ---- */
 
+/** Ceiling on a response body any module may buffer through httpJson. */
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
 export interface HttpResponse {
   status: number;
   statusText: string;
@@ -77,12 +80,16 @@ export async function httpJson(
   url: string,
   init: RequestInit = {},
   timeoutMs = 30_000,
+  maxBytes = MAX_RESPONSE_BYTES,
 ): Promise<HttpResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
-    const text = await res.text();
+    // Read against a ceiling rather than res.text(): an upstream — or a URL an
+    // agent chose to follow — can stream far more than the process should hold.
+    const bytes = await readCapped(res.body, maxBytes);
+    const text = bytes.toString("utf-8");
     let body: unknown = text;
     try {
       body = JSON.parse(text);
@@ -97,6 +104,25 @@ export async function httpJson(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readCapped(stream: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Buffer> {
+  if (!stream) return Buffer.alloc(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`Response exceeded ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** Build a JSON API client: base URL + default headers + readable errors. */
