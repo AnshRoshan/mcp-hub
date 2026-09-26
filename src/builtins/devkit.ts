@@ -1,6 +1,7 @@
+import { Worker } from "node:worker_threads";
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
-import { num, str } from "../utils.js";
+import { env, num, str } from "../utils.js";
 
 /**
  * Devkit module — deterministic developer utilities, no network, no keys.
@@ -11,6 +12,66 @@ import { num, str } from "../utils.js";
 
 const MAX_SAMPLE = 50_000;
 const MAX_MATCHES = 100;
+const REGEX_TIMEOUT_MS = Math.max(numEnv("REGEX_TIMEOUT_MS", 2000), 200);
+
+function numEnv(name: string, fallback: number): number {
+  const raw = env(name);
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+interface RegexMatch {
+  text: string;
+  index: number;
+  groups: (string | null)[];
+  named: Record<string, string>;
+}
+
+/**
+ * Run a caller-supplied regex on a worker thread and kill it on a deadline.
+ * A catastrophic pattern ((a+)+$ against a long near-miss) can spin a *single*
+ * matchAll step for minutes, which on the main thread freezes every user — no
+ * match limit helps, because the hang happens before the limit is consulted.
+ */
+async function matchWithTimeout(pattern: string, flags: string, sample: string): Promise<RegexMatch[]> {
+  const source = `
+    const { parentPort, workerData } = require("node:worker_threads");
+    const { pattern, flags, sample, max } = workerData;
+    const out = [];
+    for (const m of sample.matchAll(new RegExp(pattern, flags))) {
+      out.push({
+        text: m[0],
+        index: m.index ?? 0,
+        groups: m.slice(1).map((g) => (g === undefined ? null : g)),
+        named: Object.assign({}, m.groups),
+      });
+      if (out.length >= max) break;
+    }
+    parentPort.postMessage(out);
+  `;
+  const worker = new Worker(source, {
+    eval: true,
+    workerData: { pattern, flags, sample, max: MAX_MATCHES + 1 },
+  });
+  try {
+    return await new Promise<RegexMatch[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Regex evaluation timed out after ${REGEX_TIMEOUT_MS}ms — the pattern is likely catastrophic backtracking on this input.`));
+      }, REGEX_TIMEOUT_MS);
+      worker.once("message", (matches) => {
+        clearTimeout(timer);
+        resolve(matches as RegexMatch[]);
+      });
+      worker.once("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  } finally {
+    await worker.terminate();
+  }
+}
 
 /* ---------------- diff ---------------- */
 
@@ -116,6 +177,17 @@ interface CronSpec {
   weekday: CronField;
 }
 
+/**
+ * Cron accepts 7 as Sunday, the same day as 0. Normalise the parsed value
+ * rather than the source text — rewriting "7" to "0" inside the raw field
+ * turns the valid range "0-7" into "0-0" and "5-7" into an out-of-range error.
+ */
+function normalizeSunday(field: CronField): CronField {
+  const values = new Set(field.values);
+  if (values.delete(7)) values.add(0);
+  return { min: 0, max: 6, values };
+}
+
 function parseCron(expression: string): CronSpec {
   const fields = expression.trim().split(/\s+/);
   if (fields.length !== 5) {
@@ -126,7 +198,7 @@ function parseCron(expression: string): CronSpec {
     hour: parseCronField(fields[1], 0, 23, "hour"),
     day: parseCronField(fields[2], 1, 31, "day of month"),
     month: parseCronField(fields[3], 1, 12, "month"),
-    weekday: parseCronField(fields[4].replace(/7/g, "0"), 0, 6, "weekday"),
+    weekday: normalizeSunday(parseCronField(fields[4], 0, 7, "weekday")),
   };
 }
 
@@ -232,27 +304,40 @@ export const devkitDefs: ToolDef[] = [
       },
       required: ["pattern", "sample"],
     },
-    handler: (args) => {
+    handler: async (args) => {
       const pattern = str(args.pattern);
       const sample = str(args.sample).slice(0, MAX_SAMPLE);
       const flags = (str(args.flags, "") + "g").split("").filter((c, i, a) => "gimsuyd".includes(c) && a.indexOf(c) === i).join("");
-      let re: RegExp;
       try {
-        re = new RegExp(pattern, flags);
+        // Compiled here first so an invalid pattern reports its real syntax
+        // error rather than surfacing as a worker failure.
+        new RegExp(pattern, flags);
       } catch (err) {
         return jsonResult({ valid: false, error: err instanceof Error ? err.message : String(err) });
       }
-      const matches: { text: string; index: number; groups: (string | null)[]; named: Record<string, string> }[] = [];
-      for (const m of sample.matchAll(re)) {
-        matches.push({
-          text: m[0],
-          index: m.index ?? 0,
-          groups: m.slice(1).map((g) => g ?? null),
-          named: { ...(m.groups ?? {}) },
+      try {
+        const matches = await matchWithTimeout(pattern, flags, sample);
+        return jsonResult({
+          valid: true,
+          pattern,
+          flags,
+          matchCount: Math.min(matches.length, MAX_MATCHES),
+          truncated: matches.length > MAX_MATCHES,
+          matches: matches.slice(0, MAX_MATCHES),
         });
-        if (matches.length >= MAX_MATCHES) break;
+      } catch (err) {
+        // The pattern is valid; it just cannot be run on this input safely.
+        return jsonResult({
+          valid: true,
+          pattern,
+          flags,
+          timedOut: true,
+          matchCount: 0,
+          truncated: false,
+          matches: [],
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-      return jsonResult({ valid: true, pattern, flags, matchCount: matches.length, truncated: matches.length >= MAX_MATCHES, matches });
     },
   },
   {

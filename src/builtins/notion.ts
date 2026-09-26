@@ -15,6 +15,9 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
 
   const notion = apiClient(API, "Notion", headers);
 
+  /** Notion's per-rich-text character ceiling. */
+  const NOTION_TEXT_LIMIT = 2000;
+
   /**
    * Page/database ids are interpolated straight into the request path, so an
    * agent-supplied value must not be able to carry separators. Notion ids are
@@ -28,17 +31,23 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
     return v;
   }
 
-  /** Split free text into Notion paragraph blocks. */
+  /**
+   * Split free text into Notion paragraph blocks. Notion caps one rich_text
+   * entry at 2000 characters, so a longer paragraph is chunked across blocks
+   * rather than cut off — silently dropping the tail of a page was data loss.
+   */
   function textToBlocks(text: string): unknown[] {
-    return text
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .map((p) => ({
-        object: "block",
-        type: "paragraph",
-        paragraph: { rich_text: [{ type: "text", text: { content: p.slice(0, 2000) } }] },
-      }));
+    const blocks: unknown[] = [];
+    for (const para of text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean)) {
+      for (let i = 0; i < para.length; i += NOTION_TEXT_LIMIT) {
+        blocks.push({
+          object: "block",
+          type: "paragraph",
+          paragraph: { rich_text: [{ type: "text", text: { content: para.slice(i, i + NOTION_TEXT_LIMIT) } }] },
+        });
+      }
+    }
+    return blocks;
   }
 
   const notionDefs: ToolDef[] = [

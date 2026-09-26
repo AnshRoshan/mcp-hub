@@ -107,3 +107,25 @@ test("new tools pass the description linter", () => {
   const smells = lintDescriptions([...devkitDefs, ...youtubeDefs]);
   assert.deepEqual(smells, []);
 });
+
+test("regex_test bounds a catastrophic pattern instead of freezing the server", async () => {
+  // (a+)+$ on a long near-miss is exponential; on the main thread this stalls
+  // every other user indefinitely.
+  const { json } = await call("regex_test", { pattern: "(a+)+$", sample: "a".repeat(40) + "b" });
+  assert.equal(json.valid, true, "the pattern itself is legal");
+  assert.equal(json.timedOut, true);
+  assert.match(String(json.error), /timed out|catastrophic/);
+});
+
+test("cron weekday 7 is Sunday without flattening ranges that span it", async () => {
+  // `explain` comes back as one " · "-joined string; the weekday is its 5th part.
+  const weekday = async (expression: string): Promise<string> => {
+    const { json } = await call("cron_parse", { expression });
+    return String(json.explain).split(" · ")[4];
+  };
+  assert.equal(await weekday("0 0 * * 7"), "weekday = 0");
+  // Rewriting the digit 7 before parsing turned "0-7" into "0-0" — every day
+  // collapsing to Sunday — and made "5-7" an out-of-range error.
+  assert.equal(await weekday("0 0 * * 0-7"), "every weekday");
+  assert.equal(await weekday("0 0 * * 5-7"), "weekday in {0, 5, 6}");
+});
