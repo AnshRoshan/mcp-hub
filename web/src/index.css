@@ -724,6 +724,29 @@ html {
   padding: 14px 16px;
 }
 
+/* Traffic strip — 14 days of real calls; errors mark the bar top in abort red */
+.traffic-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 44px;
+}
+
+.traffic-bar {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fd-telemetry) 55%, transparent);
+}
+
+.traffic-bar:last-child {
+  background: var(--fd-telemetry);
+}
+
+.traffic-bar.has-errors {
+  box-shadow: inset 0 3px 0 var(--fd-abort);
+}
+
 /* Account plate inside the rail footer */
 .account-plate {
   justify-content: flex-start !important;

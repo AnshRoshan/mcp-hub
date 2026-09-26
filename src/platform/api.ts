@@ -67,6 +67,12 @@ export async function handleApiRequest(request: Request, ctx: ApiContext): Promi
       return json(200, ctx.status());
     }
 
+    case "usage": {
+      if (request.method !== "GET") return json(405, { error: "Method not allowed" });
+      const days = Math.min(90, Math.max(7, Number(url.searchParams.get("days")) || 14));
+      return json(200, ctx.db.usageSummary(user.id, days));
+    }
+
     case "servers": {
       return handleServers(request, ctx, user.id, id);
     }

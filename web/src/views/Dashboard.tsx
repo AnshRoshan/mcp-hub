@@ -1,6 +1,7 @@
-import { type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { ArrowRight, Cable } from "lucide-react";
+import { loadUsage, type UsageSummary } from "../lib/api";
 import { MODULES } from "../lib/catalog";
 import { useStore } from "../lib/store";
 import { Badge, Btn, CopyBtn } from "../components/ui";
@@ -129,6 +130,8 @@ export default function Dashboard() {
             </Text>
             <Btn variant="link" className="self-start" onClick={() => navigate("modules")}>Adjust</Btn>
           </div>
+
+          <TrafficPanel />
         </section>
       </div>
     </div>
@@ -172,5 +175,63 @@ function Step({ n, text, action, done }: { n: number; text: ReactNode; action?: 
       <span className="min-w-0 flex-1 text-sm text-secondary">{text}</span>
       {action}
     </li>
+  );
+}
+
+/** 14-day call traffic, straight from the usage_events rollup. */
+function TrafficPanel() {
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadUsage()
+      .then((u) => alive && setUsage(u))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <div className="mode-block">
+      <div className="flex items-center justify-between gap-3">
+        <Heading level={4} className="!mb-0">Traffic</Heading>
+        <span className="telemetry text-[10.5px] uppercase tracking-[0.12em] text-disabled">14d</span>
+      </div>
+      {failed ? (
+        <Text type="supporting" size="sm">Traffic history is unavailable in single-user mode.</Text>
+      ) : !usage ? (
+        <div className="skeleton h-[44px] w-full" />
+      ) : usage.totalCalls === 0 ? (
+        <Text type="supporting" size="sm" className="leading-relaxed">
+          No tool calls recorded yet. Traffic appears here once a client works through <code>/mcp</code>.
+        </Text>
+      ) : (
+        <>
+          <div className="traffic-bars" aria-hidden>
+            {usage.series.map((d) => (
+              <span
+                key={d.date}
+                className={`traffic-bar ${d.errors > 0 ? "has-errors" : ""}`}
+                style={{ height: `${3 + (d.calls / Math.max(1, ...usage.series.map((x) => x.calls))) * 41}px` }}
+                title={`${d.date} · ${d.calls} call${d.calls === 1 ? "" : "s"}${d.errors ? ` · ${d.errors} failed` : ""}`}
+              />
+            ))}
+          </div>
+          <div className="telemetry flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-secondary">
+            <span>{usage.todayCalls} today</span>
+            <span>{usage.avgLatencyMs}ms avg</span>
+            {usage.totalErrors > 0 && <span className="text-[var(--fd-abort)]">{usage.totalErrors} failed</span>}
+          </div>
+          {usage.topTools[0] && (
+            <div className="flex items-center gap-2 text-[12px] text-secondary">
+              <span>busiest</span>
+              <code className="module-card-tool-name">{usage.topTools[0].tool}</code>
+              <span className="telemetry text-[11px] text-disabled">×{usage.topTools[0].calls}</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

@@ -173,6 +173,19 @@ export const loadStatus = async (): Promise<StatusData | null> => {
 };
 export const loadMe = () => api<MeData>("/api/me");
 
+export interface UsageSummary {
+  days: number;
+  series: { date: string; calls: number; errors: number }[];
+  totalCalls: number;
+  totalErrors: number;
+  avgLatencyMs: number;
+  outBytes: number;
+  todayCalls: number;
+  topTools: { tool: string; calls: number }[];
+}
+
+export const loadUsage = (days = 14) => api<UsageSummary>(`/api/usage?days=${days}`);
+
 export const saveServer = (body: ServerBody, id?: string) =>
   id ? api(`/api/servers/${id}`, { method: "PATCH", body: JSON.stringify(body) }) : api("/api/servers", { method: "POST", body: JSON.stringify(body) });
 
