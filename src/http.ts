@@ -14,6 +14,16 @@ import type { PlatformDb } from "./platform/db.js";
 import type { Skill } from "./platform/skills.js";
 import { env } from "./utils.js";
 
+/** Largest body the REST/auth/OAuth routes will buffer per request. */
+const MAX_REQUEST_BYTES = Math.max(Number(env("MAX_REQUEST_BYTES") ?? ""), 0) || 8 * 1024 * 1024;
+
+/** Raised by body reading so the top-level handler can answer 413, not 500. */
+class BodyTooLarge extends Error {
+  constructor(readonly limitBytes: number) {
+    super(`Request body exceeds ${limitBytes} bytes`);
+  }
+}
+
 export interface HttpOptions {
   port: number;
   mcpPath: string;
@@ -131,7 +141,11 @@ export function startHttp(
       await routeMcp(req, res, url);
     } catch (err) {
       if (!res.headersSent) {
-        json(res, 500, { error: `Internal error: ${err instanceof Error ? err.message : String(err)}` });
+        if (err instanceof BodyTooLarge) {
+          json(res, 413, { error: `Request body too large (limit ${err.limitBytes} bytes)` });
+        } else {
+          json(res, 500, { error: `Internal error: ${err instanceof Error ? err.message : String(err)}` });
+        }
       } else {
         res.destroy();
       }
@@ -332,8 +346,15 @@ function toRequest(req: http.IncomingMessage, url: URL): Request {
 
 /** Read the request body and build a full Request (for auth + REST routes). */
 async function toBodyRequest(req: http.IncomingMessage, url: URL): Promise<Request> {
+  const declared = Number(req.headers["content-length"] ?? "");
+  if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) throw new BodyTooLarge(MAX_REQUEST_BYTES);
   const chunks: Buffer[] = [];
+  let received = 0;
   for await (const chunk of req) {
+    received += (chunk as Buffer).length;
+    // content-length is a claim, not a fact — a streamed body has to be cut
+    // off while it is being read.
+    if (received > MAX_REQUEST_BYTES) throw new BodyTooLarge(MAX_REQUEST_BYTES);
     chunks.push(chunk as Buffer);
   }
   const body = Buffer.concat(chunks).toString("utf-8");
