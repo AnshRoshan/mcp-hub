@@ -159,7 +159,9 @@ snapshots the assembled catalog, so it reports the exact view the caller sees.
 ### Lite catalog (search-first exposure)
 
 In lite mode (`prefs.lite`, ON for new platform users) `assembleCatalog` splits
-the assembled tool set: Tier-0 (`workstation_status`, `workstation_reload`) is
+the assembled tool set: Tier-0 (`workstation_status`, plus `workstation_reload`
+in single-user mode — it is withheld from platform-mode tenants because it
+reconnects every shared upstream) is
 listed, everything else lands in an immutable `hidden` map plus a `ToolIndex`
 (`src/toolsearch.ts` — ephemeral in-memory BM25 over tool names, description
 phrases, and a curated per-module synonym table). `createMcpInstance` then

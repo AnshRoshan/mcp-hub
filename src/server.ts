@@ -42,6 +42,8 @@ const VERSION = "0.2.0";
 /** Cache hint for tool catalogs: they only change on reload, so allow caching. */
 const TOOL_LIST_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "public" };
 const DISCOVER_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "public" };
+/** Platform mode answers are per-user, so no shared cache may reuse them. */
+const PRIVATE_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "private" };
 
 export interface WorkstationOptions {
   /** Present when platform mode (multi-user auth) is on. */
@@ -242,9 +244,9 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     ];
   }
 
-  /** The two Operations tools every catalog exposes, even in lite mode. */
+  /** The Operations tools every catalog exposes, even in lite mode. */
   function metaToolDefs(getStatus: () => unknown): ToolDef[] {
-    return [
+    const defs: ToolDef[] = [
       {
         name: "workstation_status",
         description:
@@ -252,17 +254,22 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         inputSchema: { type: "object", properties: {} },
         handler: () => jsonResult(getStatus()),
       },
-      {
-        name: "workstation_reload",
-        description:
-          "Re-read config/servers.json, reconnect all shared upstream MCP servers, and refresh the tool list.",
-        inputSchema: { type: "object", properties: {} },
-        handler: async () => {
-          const summary = await reload();
-          return jsonResult({ message: "Reloaded", ...JSON.parse(summary) });
-        },
-      },
     ];
+    // Reload drops and re-spawns every shared upstream, so in platform mode it
+    // is an operator action — leaving it in a user's catalog lets one tenant
+    // disconnect everyone else's connections on demand.
+    if (options.platform) return defs;
+    defs.push({
+      name: "workstation_reload",
+      description:
+        "Re-read config/servers.json, reconnect all shared upstream MCP servers, and refresh the tool list.",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => {
+        const summary = await reload();
+        return jsonResult({ message: "Reloaded", ...JSON.parse(summary) });
+      },
+    });
+    return defs;
   }
 
   /** Register one module's tools into a catalog's registry, or record why it was skipped. */
@@ -637,17 +644,18 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         capabilities: { tools: {}, ...(catalog.resources.length > 0 ? { resources: {} } : {}) },
         cacheHints: {
           // Per-user catalogs in platform mode: never let a shared cache serve
-          // one user's tool list to another.
-          "tools/list": options.platform ? { ttlMs: 60_000, cacheScope: "private" as const } : TOOL_LIST_CACHE_HINT,
-          "server/discover": DISCOVER_CACHE_HINT,
+          // one user's tool list — or their discovery metadata — to another.
+          "tools/list": options.platform ? PRIVATE_CACHE_HINT : TOOL_LIST_CACHE_HINT,
+          "server/discover": options.platform ? PRIVATE_CACHE_HINT : DISCOVER_CACHE_HINT,
         },
         instructions: lite
           ? "Aggregated MCP workstation (LITE catalog). Most tools are not listed to save " +
             "context: use hub_search_tools <query> to find them, hub_get_tool to inspect a " +
             "schema, and hub_call to invoke. workstation_status lists active modules. " +
             "Skills live in skills_list/skills_get."
-          : "Aggregated MCP workstation. Tools are prefixed by module/server key " +
-            "(e.g. github_*, fs_*, pg_*, crypto_*, weather_*). Run workstation_status to see " +
+          : "Aggregated MCP workstation. Built-in tools carry their module's own prefix " +
+            "(e.g. gh_*, fs_*, pg_*, crypto_*, weather_*); tools from your registered upstream " +
+            "servers are prefixed by that server's key. Run workstation_status to see " +
             "what is active, and skills_list to see the skills hub.",
       },
     );
