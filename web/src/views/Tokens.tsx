@@ -71,7 +71,7 @@ export default function Tokens() {
         <section className="panel panel-success">
           <Heading level={4}>Copy this token — it won't be shown again</Heading>
           <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <code className="block flex-1 break-all rounded-[4px] border border-border bg-background-body p-3 font-mono text-sm text-primary">{newToken}</code>
+            <code className="block flex-1 break-all rounded-[6px] border border-border bg-background-body p-3 font-mono text-sm text-primary">{newToken}</code>
             <Btn variant="primary" icon={<KeyRound size={13} />} onClick={async () => { await copyText(newToken); toast("Token copied"); }}>Copy</Btn>
           </div>
         </section>
@@ -87,7 +87,7 @@ export default function Tokens() {
                 <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                   <span className="text-primary">{t.name}</span>
                   <span className={`flag ${t.lastUsedAt ? "flag-telemetry" : "flag-go"}`}>{t.lastUsedAt ? "ACTIVE" : "LIVE"}</span>
-                  <span className="telemetry rounded-[3px] border border-border px-2 py-0.5 text-[10.5px] text-secondary">
+                  <span className="telemetry rounded-[4px] border border-border px-2 py-0.5 text-[10.5px] text-secondary">
                     …{t.hint}
                   </span>
                 </div>

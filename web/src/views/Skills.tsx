@@ -59,7 +59,7 @@ export default function Skills() {
                   <div className="skill-card-header">
                     <div className="skill-card-name">
                       <Text weight="semibold" size="sm">{skill.name}</Text>
-                      <span className="telemetry rounded-[3px] border border-border px-1.5 py-0.5 text-[10px] text-tertiary">
+                      <span className="telemetry rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-tertiary">
                         v{skill.version}
                       </span>
                     </div>

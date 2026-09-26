@@ -1,12 +1,10 @@
 /*
- * MCP Workstation — "Flight Dynamics" world, two registers.
- * A mission-control status wall: the night console (flight-black fields,
- * machined panel seams, 1D ivory grotesk) and the daylight cockpit (ivory
- * paper, ink register). JetBrains Mono is the measurement register in both;
- * the state law is absolute — color only ever answers a real state
- * (GO / CAUTION / ABORT / TELEMETRY), with hues tuned per register for
- * emissive-vs-ink legibility. Built on Astryx tokens: the theme is
- * re-tuned, not fought.
+ * MCP Workstation — "Meridian" world, two registers.
+ * A precision-instrument console: cool neutral slate surfaces (never warm
+ * cast), one azure accent for everything interactive, and emerald/amber/red
+ * answering only real states. JetBrains Mono is the measurement register in
+ * both; soft hardware corners on a 2–10px scale. Built on Astryx tokens:
+ * the theme is re-tuned, not fought.
  *
  * Layer order maps to the documented Astryx cascade:
  * reset → tailwind preflight → astryx component styles → theme token
@@ -23,7 +21,8 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 
 /* ================================================================
-   Flight Dynamics token law
+   Meridian token law — cool neutrals, one azure accent, semantics
+   only where a real state exists.
    ================================================================ */
 
 :root {
@@ -34,44 +33,48 @@
   /* Motion grammar: one exponential-out ease for everything interactive */
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* Radius scale: soft hardware, never razor corners */
+  --r-ctl: 6px;
+  --r-card: 10px;
+
   /* State law — every one of these answers a real state, never decorates */
-  --fd-go: #8fdc9a;
-  --fd-go-deep: #173322;
-  --fd-caution: #e8b34b;
-  --fd-caution-deep: #3a2b10;
-  --fd-abort: #e0705f;
-  --fd-abort-deep: #38191a;
-  --fd-telemetry: #6fc3d6;
-  --fd-telemetry-deep: #122d33;
-  --fd-ivory: #e6e2d6;
-  --fd-ink: #12161b;
+  --fd-go: #3ecf8e;
+  --fd-go-deep: #0e2b1e;
+  --fd-caution: #f0b429;
+  --fd-caution-deep: #2e2408;
+  --fd-abort: #f26451;
+  --fd-abort-deep: #33130f;
+  --fd-telemetry: #4f8cff;
+  --fd-telemetry-deep: #101c33;
+  --fd-ivory: #e9edf3;
+  --fd-ink: #0b0d12;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Console fields */
-  --color-background-body: #0d1014;
-  --color-background-surface: #14181d;
-  --color-background-card: #10141a;
-  --color-background-popover: #1a1f26;
-  --color-background-muted: #191e25;
+  /* Console fields — blue-black neutrals, zero warm cast */
+  --color-background-body: #0b0d12;
+  --color-background-surface: #10141b;
+  --color-background-card: #141923;
+  --color-background-popover: #1a2130;
+  --color-background-muted: #171c26;
 
-  /* 1D ivory register */
-  --color-text-primary: var(--fd-ivory);
-  --color-text-secondary: #a5a294;
-  --color-text-disabled: #5b6068;
-  --color-text-accent: var(--fd-ivory);
+  /* Cool white register */
+  --color-text-primary: #e9edf3;
+  --color-text-secondary: #98a2b3;
+  --color-text-disabled: #5b6472;
+  --color-text-accent: var(--fd-telemetry);
 
-  /* Ivory plate primary action */
-  --color-accent: #ded9cb;
-  --color-accent-hover: #efeade;
-  --color-accent-muted: rgba(230, 226, 214, 0.14);
-  --color-on-accent: var(--fd-ink);
+  /* Azure primary action */
+  --color-accent: #4f8cff;
+  --color-accent-hover: #6b9eff;
+  --color-accent-muted: rgba(79, 140, 255, 0.16);
+  --color-on-accent: #ffffff;
 
-  /* Machined seams */
-  --color-border: rgba(230, 226, 214, 0.11);
-  --color-border-emphasized: #3a424c;
+  /* Slate seams */
+  --color-border: rgba(148, 163, 184, 0.13);
+  --color-border-emphasized: #2b3444;
 
   /* State law mapped onto Astryx semantics */
   --color-success: var(--fd-go);
@@ -79,7 +82,7 @@
   --color-text-green: var(--fd-go);
   --color-icon-green: var(--fd-go);
   --color-background-green: var(--fd-go-deep);
-  --color-border-green: rgba(143, 220, 154, 0.35);
+  --color-border-green: rgba(62, 207, 142, 0.35);
 
   --color-warning: var(--fd-caution);
   --color-warning-muted: var(--fd-caution-deep);
@@ -88,76 +91,75 @@
   --color-icon-yellow: var(--fd-caution);
   --color-background-yellow: var(--fd-caution-deep);
   --color-background-orange: var(--fd-caution-deep);
-  --color-border-yellow: rgba(232, 179, 75, 0.35);
+  --color-border-yellow: rgba(240, 180, 41, 0.35);
 
   --color-error: var(--fd-abort);
   --color-error-muted: var(--fd-abort-deep);
   --color-text-red: var(--fd-abort);
   --color-icon-red: var(--fd-abort);
   --color-background-red: var(--fd-abort-deep);
-  --color-border-red: rgba(224, 112, 95, 0.38);
+  --color-border-red: rgba(242, 100, 81, 0.38);
 
   --color-text-cyan: var(--fd-telemetry);
   --color-icon-cyan: var(--fd-telemetry);
   --color-background-cyan: var(--fd-telemetry-deep);
-  --color-border-cyan: rgba(111, 195, 214, 0.35);
+  --color-border-cyan: rgba(79, 140, 255, 0.35);
 
   --color-focus: var(--fd-telemetry);
-  --color-overlay: rgba(4, 6, 9, 0.72);
-  --color-shadow: rgba(0, 0, 0, 0.55);
-  --color-skeleton: #1d232b;
+  --color-overlay: rgba(2, 4, 8, 0.7);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+  --color-skeleton: #1b212c;
 
-  /* Theme-scoped surfaces: washes are ivory-on-black in the console */
-  --fd-wash-base: #e6e2d6;
-  --fd-wash: rgba(230, 226, 214, 0.03);
-  --fd-hazard: rgba(230, 226, 214, 0.028);
-  --fd-shimmer: rgba(230, 226, 214, 0.07);
-  --led-off: #232a33;
-  --fd-scroll: #262d36;
-  --fd-scroll-hover: #3a424c;
+  /* Theme-scoped surfaces: cool slate washes on blue-black */
+  --fd-wash-base: #94a3b8;
+  --fd-wash: rgba(148, 163, 184, 0.06);
+  --fd-hazard: rgba(148, 163, 184, 0.05);
+  --fd-shimmer: rgba(148, 163, 184, 0.09);
+  --led-off: #232a36;
+  --fd-scroll: #232b3a;
+  --fd-scroll-hover: #33405a;
 }
 
 /* ================================================================
-   Daylight cockpit — the same flight rules printed on ivory paper.
-   State law is unchanged; the hues darken so they read as ink-stamped
-   flags on a light field instead of emissive lamps on black.
+   Daylight register — the same law on cool paper. Whites stay white,
+   text stays near-black slate; the accent deepens for contrast.
    ================================================================ */
 
 [data-theme="light"] {
   color-scheme: light;
 
   /* State law, ink-on-paper register */
-  --fd-go: #1c7d40;
-  --fd-go-deep: #d9ebda;
-  --fd-caution: #8a5c05;
-  --fd-caution-deep: #f2e3bd;
-  --fd-abort: #b5402e;
-  --fd-abort-deep: #f3dcd6;
-  --fd-telemetry: #0d687c;
-  --fd-telemetry-deep: #d3e7ec;
+  --fd-go: #178a4c;
+  --fd-go-deep: #ddf2e6;
+  --fd-caution: #a06a06;
+  --fd-caution-deep: #f8e8c6;
+  --fd-abort: #cc3b2c;
+  --fd-abort-deep: #faded9;
+  --fd-telemetry: #2e6be6;
+  --fd-telemetry-deep: #dfe9fb;
 
-  /* Paper fields */
-  --color-background-body: #eceadf;
-  --color-background-surface: #f4f2e9;
-  --color-background-card: #faf9f2;
-  --color-background-popover: #fffef8;
-  --color-background-muted: #e5e1d3;
+  /* Cool paper fields */
+  --color-background-body: #f4f6f9;
+  --color-background-surface: #ffffff;
+  --color-background-card: #ffffff;
+  --color-background-popover: #ffffff;
+  --color-background-muted: #eef1f5;
 
-  /* Ink register */
-  --color-text-primary: #191d21;
-  --color-text-secondary: #5a5d54;
-  --color-text-disabled: #9a9c91;
-  --color-text-accent: #191d21;
+  /* Slate ink register */
+  --color-text-primary: #101725;
+  --color-text-secondary: #55606e;
+  --color-text-disabled: #98a2b0;
+  --color-text-accent: #2e6be6;
 
-  /* Ink plate primary action (ivory plate inverted) */
-  --color-accent: #171b20;
-  --color-accent-hover: #2a3038;
-  --color-accent-muted: rgba(23, 27, 32, 0.1);
-  --color-on-accent: #ece9de;
+  /* Azure primary action */
+  --color-accent: #2e6be6;
+  --color-accent-hover: #2459c4;
+  --color-accent-muted: rgba(46, 107, 230, 0.12);
+  --color-on-accent: #ffffff;
 
-  /* Panel seams on paper */
-  --color-border: rgba(25, 29, 33, 0.16);
-  --color-border-emphasized: #b6b1a1;
+  /* Cool seams on paper */
+  --color-border: rgba(16, 24, 40, 0.1);
+  --color-border-emphasized: #c3cad4;
 
   /* State law mapped onto Astryx semantics */
   --color-success: var(--fd-go);
@@ -165,7 +167,7 @@
   --color-text-green: var(--fd-go);
   --color-icon-green: var(--fd-go);
   --color-background-green: var(--fd-go-deep);
-  --color-border-green: rgba(28, 125, 64, 0.4);
+  --color-border-green: rgba(23, 138, 76, 0.4);
 
   --color-warning: var(--fd-caution);
   --color-warning-muted: var(--fd-caution-deep);
@@ -174,33 +176,33 @@
   --color-icon-yellow: var(--fd-caution);
   --color-background-yellow: var(--fd-caution-deep);
   --color-background-orange: var(--fd-caution-deep);
-  --color-border-yellow: rgba(138, 92, 5, 0.4);
+  --color-border-yellow: rgba(160, 106, 6, 0.4);
 
   --color-error: var(--fd-abort);
   --color-error-muted: var(--fd-abort-deep);
   --color-text-red: var(--fd-abort);
   --color-icon-red: var(--fd-abort);
   --color-background-red: var(--fd-abort-deep);
-  --color-border-red: rgba(181, 64, 46, 0.42);
+  --color-border-red: rgba(204, 59, 44, 0.42);
 
   --color-text-cyan: var(--fd-telemetry);
   --color-icon-cyan: var(--fd-telemetry);
   --color-background-cyan: var(--fd-telemetry-deep);
-  --color-border-cyan: rgba(13, 104, 124, 0.4);
+  --color-border-cyan: rgba(46, 107, 230, 0.4);
 
   --color-focus: var(--fd-telemetry);
-  --color-overlay: rgba(35, 32, 24, 0.42);
-  --color-shadow: rgba(70, 63, 45, 0.28);
-  --color-skeleton: #dfdbcc;
+  --color-overlay: rgba(16, 24, 40, 0.35);
+  --color-shadow: rgba(16, 24, 40, 0.18);
+  --color-skeleton: #e7ebf0;
 
-  /* Theme-scoped surfaces: washes are ink-on-ivory in daylight */
-  --fd-wash-base: #191d21;
-  --fd-wash: rgba(25, 29, 33, 0.045);
-  --fd-hazard: rgba(25, 29, 33, 0.05);
-  --fd-shimmer: rgba(25, 29, 33, 0.06);
-  --led-off: #d8d3c3;
-  --fd-scroll: #c7c2b1;
-  --fd-scroll-hover: #a9a391;
+  /* Theme-scoped surfaces: ink washes on cool paper */
+  --fd-wash-base: #101725;
+  --fd-wash: rgba(16, 23, 37, 0.04);
+  --fd-hazard: rgba(16, 23, 37, 0.045);
+  --fd-shimmer: rgba(16, 23, 37, 0.06);
+  --led-off: #dde3ea;
+  --fd-scroll: #c9d1dc;
+  --fd-scroll-hover: #aab6c6;
 }
 
 /* ---- instrument typography ---- */
@@ -245,8 +247,8 @@ html {
 }
 
 ::selection {
-  background: rgba(232, 179, 75, 0.85);
-  color: var(--fd-ink);
+  background: color-mix(in srgb, var(--fd-telemetry) 32%, transparent);
+  color: var(--color-text-primary);
 }
 
 :focus-visible {
@@ -291,7 +293,7 @@ html {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-border-emphasized);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--color-text-primary);
 }
 
@@ -318,7 +320,7 @@ html {
   color: var(--color-text-disabled);
   font-family: var(--fd-mono);
   font-size: 10px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -336,7 +338,7 @@ html {
   gap: 10px;
   width: 100%;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   padding: 8px 10px;
   color: var(--color-text-secondary);
@@ -365,7 +367,7 @@ html {
   bottom: 6px;
   left: 0;
   width: 2px;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--fd-telemetry);
 }
 
@@ -382,7 +384,7 @@ html {
   align-items: center;
   gap: 10px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--color-background-body);
   padding: 8px 10px;
   min-width: 0;
@@ -420,7 +422,7 @@ html {
 .hamburger span {
   height: 2px;
   background: currentColor;
-  border-radius: 1px;
+  border-radius: 2px;
   transition: transform 200ms var(--ease-expo), opacity 160ms ease;
 }
 
@@ -446,7 +448,7 @@ html {
   justify-content: center;
   gap: 8px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 14px;
   color: var(--color-text-primary);
   font-family: var(--fd-display);
@@ -522,7 +524,7 @@ html {
   height: 26px;
   flex: none;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   padding: 0 6px;
   color: var(--color-text-secondary);
@@ -552,7 +554,7 @@ html {
   height: 22px;
   flex: none;
   border: 1px solid var(--color-border-emphasized);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--color-background-body);
   cursor: pointer;
   transition: background-color 160ms ease, border-color 160ms ease;
@@ -569,7 +571,7 @@ html {
   left: 3px;
   width: 14px;
   height: 14px;
-  border-radius: 1px;
+  border-radius: 4px;
   background: var(--color-text-disabled);
   transition: transform 200ms var(--ease-expo), background-color 160ms ease;
 }
@@ -598,7 +600,7 @@ html {
   flex: none;
   border: 1px solid transparent;
   border-bottom: 0;
-  border-radius: 4px 4px 0 0;
+  border-radius: 8px 8px 0 0;
   background: transparent;
   padding: 8px 12px 9px;
   color: var(--color-text-secondary);
@@ -638,7 +640,7 @@ html {
   align-items: center;
   gap: 8px;
   border: 1px dashed var(--color-border-emphasized);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
   padding: 36px 20px;
   text-align: center;
@@ -649,13 +651,13 @@ html {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--color-border-emphasized);
-  border-radius: 3px;
+  border-radius: 5px;
   padding: 2px 8px;
   color: var(--color-text-disabled);
   font-family: var(--fd-mono);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -680,7 +682,7 @@ html {
   justify-content: space-between;
   gap: 16px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
   padding: 14px 16px;
 }
@@ -696,7 +698,7 @@ html {
 /* Bolted panel — the world's own container, never Astryx Card */
 .panel {
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
   padding: 18px;
 }
@@ -717,7 +719,7 @@ html {
   flex-direction: column;
   gap: 8px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
   padding: 14px 16px;
 }
@@ -752,7 +754,7 @@ html {
   align-items: center;
   gap: 10px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-body);
   padding: 12px 14px;
 }
@@ -781,7 +783,7 @@ html {
 .section-count {
   margin-left: auto;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 3px 8px;
   color: var(--color-text-secondary);
   font-family: var(--fd-mono);
@@ -810,7 +812,7 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--color-border);
   padding: 3px 10px 3px 5px;
   font-size: 11px;
@@ -849,7 +851,7 @@ html {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--fd-wash-base) 2.5%, transparent), transparent 42px),
     var(--color-background-card);
@@ -922,7 +924,7 @@ html {
   justify-content: space-between;
   gap: 8px;
   padding: 5px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12.5px;
   transition: background-color 120ms ease;
 }
@@ -977,7 +979,7 @@ html {
 .capability-list {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
 }
 
@@ -1017,7 +1019,7 @@ html {
   min-height: 36px;
   align-items: center;
   gap: 10px;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 4px 8px;
 }
 
@@ -1034,7 +1036,7 @@ html {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
 }
 
@@ -1075,7 +1077,7 @@ html {
 .module-summary {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--color-background-card);
 }
 
@@ -1101,7 +1103,7 @@ html {
 .wall-head {
   font-family: var(--fd-mono);
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-text-disabled);
 }
@@ -1126,7 +1128,7 @@ html {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid transparent;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
@@ -1146,12 +1148,12 @@ html {
   align-items: center;
   gap: 5px;
   border: 1px solid var(--color-border-emphasized);
-  border-radius: 3px;
-  padding: 2px 7px;
+  border-radius: 5px;
+  padding: 2px 8px;
   font-family: var(--fd-mono);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-secondary);
   background: transparent;
@@ -1200,7 +1202,7 @@ html {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--color-border-emphasized);
-  border-radius: 3px;
+  border-radius: 5px;
   padding: 3px 7px;
   background: transparent;
   color: var(--color-text-secondary);
@@ -1224,7 +1226,7 @@ html {
   height: 5px;
   flex: 1;
   background: var(--led-off);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .led.on {
@@ -1241,7 +1243,7 @@ html {
   gap: 6px;
   padding: 3px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 3px;
+  border-radius: 5px;
   background: var(--color-background-popover);
   font-family: var(--fd-mono);
   font-size: 10.5px;
@@ -1348,7 +1350,7 @@ button {
   position: relative;
   overflow: hidden;
   background: var(--color-skeleton);
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .skeleton::after {

@@ -47,7 +47,7 @@ export default function Connect() {
             </Step>
           </ol>
 
-          <div className="mt-5 rounded-[4px] border border-border bg-surface p-3">
+          <div className="mt-5 rounded-[6px] border border-border bg-surface p-3">
             <Text type="supporting" size="sm">
               <strong className="telemetry text-primary">stdio</strong> runs locally · <strong className="telemetry text-primary">HTTP</strong> points at a remote endpoint
             </Text>
@@ -81,7 +81,7 @@ export default function Connect() {
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex gap-3.5">
-      <span className="telemetry flex h-7 w-7 flex-none items-center justify-center rounded-[4px] border border-border bg-surface text-[11px] font-bold text-primary">
+      <span className="telemetry flex h-7 w-7 flex-none items-center justify-center rounded-[6px] border border-border bg-surface text-[11px] font-bold text-primary">
         {n}
       </span>
       <div className="min-w-0 flex-1 text-[13px]">{children}</div>
