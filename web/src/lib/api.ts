@@ -1,11 +1,61 @@
 /* API client + shared types for the MCP Workstation dashboard. */
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/** An API failure that carries its HTTP status; 0 means "never reached the server". */
+class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export const isUnauthorized = (err: unknown): boolean => err instanceof ApiError && err.status === 401;
+
+function failedRequest(err: unknown): ApiError {
+  const aborted = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+  return new ApiError(0, aborted ? "The request timed out." : "The server could not be reached.");
+}
+
+/**
+ * A single signal for every request: without it a hung socket leaves a view
+ * spinning forever. Caller-supplied signals win — they know their own budget.
+ */
+const signalFor = (opts: RequestInit): AbortSignal => opts.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
+let unauthorizedHandler: (() => void) | null = null;
+let unauthorizedReported = false;
+
+/**
+ * Register the app's signed-out transition. Called at most once per session
+ * check so a page of parallel 401s does not fire the redirect several times.
+ */
+export function onUnauthorized(handler: () => void): () => void {
+  unauthorizedHandler = handler;
+  unauthorizedReported = false;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null;
+  };
+}
+
+function reportUnauthorized(): void {
+  if (unauthorizedReported) return;
+  unauthorizedReported = true;
+  unauthorizedHandler?.();
+}
+
 async function api<T = unknown>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    credentials: "same-origin",
-    ...opts,
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+      credentials: "same-origin",
+      signal: signalFor(opts),
+    });
+  } catch (err) {
+    throw failedRequest(err);
+  }
   let body: any = null;
   try {
     body = await res.json();
@@ -14,7 +64,8 @@ async function api<T = unknown>(path: string, opts: RequestInit = {}): Promise<T
   }
   if (!res.ok) {
     const msg = body && (body.error || body.message) ? body.error || body.message : `HTTP ${res.status}`;
-    throw new Error(msg);
+    if (res.status === 401) reportUnauthorized();
+    throw new ApiError(res.status, msg);
   }
   return body;
 }
@@ -57,12 +108,25 @@ export interface ModuleInfo {
   reason?: string;
 }
 
+export interface UpstreamInfo {
+  key: string;
+  type: "stdio" | "http";
+  detail: string;
+  state: "connected" | "error";
+  toolCount: number;
+  resourceCount?: number;
+  error?: string;
+}
+
 export interface StatusData {
   protocol?: string;
   node?: string;
   version?: string;
+  catalogMode?: string;
   totalTools?: number;
   modules?: ModuleInfo[];
+  upstreams?: UpstreamInfo[];
+  userUpstreams?: UpstreamInfo[];
 }
 
 export interface Skill {
@@ -85,7 +149,11 @@ export interface ServerBody {
   key: string;
   type: "stdio" | "http";
   category: string;
-  env: Record<string, string>;
+  /**
+   * Omitted = leave stored credentials untouched. The backend replaces the
+   * whole encrypted map whenever this key is present, `{}` included.
+   */
+  env?: Record<string, string>;
   headers?: Record<string, string>;
   command?: string;
   args?: string[];
@@ -98,8 +166,19 @@ export interface ServerBody {
 export type SessionResult = { kind: "off" } | { kind: "signed-in"; user: User } | { kind: "signed-out" };
 
 export async function getSession(): Promise<SessionResult> {
-  const res = await fetch("/api/auth/get-session", { credentials: "same-origin" });
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/get-session", {
+      credentials: "same-origin",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw failedRequest(err);
+  }
   if (res.status === 404) return { kind: "off" }; // platform mode off — no auth routes
+  // A rejected session probe still means "not signed in"; only real server
+  // faults throw, so boot can show an error instead of bouncing to login.
+  if (!res.ok && res.status !== 401) throw new ApiError(res.status, `HTTP ${res.status}`);
   const data = await res.json().catch(() => null);
   return data && data.user ? { kind: "signed-in", user: data.user } : { kind: "signed-out" };
 }
@@ -118,45 +197,73 @@ export async function getAuthConfig(): Promise<AuthConfig | null> {
   }
 }
 
-export async function socialSignIn(provider: "google" | "github"): Promise<void> {  const res = await fetch("/api/auth/sign-in/social", {
+/** Hosts the sign-in redirect is allowed to point at, besides this origin. */
+const TRUSTED_AUTHORITIES = new Set(["accounts.google.com", "github.com"]);
+
+/** Refuse anything but a same-origin path or an https hop to a known provider. */
+function trustedRedirect(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  let target: URL;
+  try {
+    target = new URL(url, window.location.origin);
+  } catch {
+    return null;
+  }
+  const sameOrigin = target.origin === window.location.origin;
+  const knownProvider = target.protocol === "https:" && TRUSTED_AUTHORITIES.has(target.hostname);
+  return sameOrigin || knownProvider ? target.href : null;
+}
+
+export async function socialSignIn(provider: "google" | "github"): Promise<void> {
+  const res = await fetch("/api/auth/sign-in/social", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify({ provider, callbackURL: window.location.origin + "/" }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  }).catch((err: unknown) => {
+    throw failedRequest(err);
   });
-  const data = await res.json();
-  if (!res.ok || !data.url) {
-    throw new Error(data.error?.message || data.message || "Sign-in could not start.");
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) {
+    throw new Error(data?.error?.message || data?.message || "Sign-in could not start.");
   }
-  window.location.href = data.url;
+  const href = trustedRedirect(data.url);
+  if (!href) throw new Error("Sign-in returned an unexpected redirect. Try again or use email.");
+  window.location.href = href;
 }
 
 export async function emailSignIn(email: string, password: string): Promise<void> {
-  const res = await fetch("/api/auth/sign-in/email", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json();
-  if (res.ok && !data.error) {
+  const post = (path: string, body: unknown) =>
+    fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }).catch((err: unknown) => {
+      throw failedRequest(err);
+    });
+
+  const res = await post("/api/auth/sign-in/email", { email, password });
+  const data = await res.json().catch(() => null);
+  if (res.ok && !data?.error) {
     window.location.reload();
     return;
   }
   // Fall back to sign-up (first-time email login may 422).
-  const up = await fetch("/api/auth/sign-up/email", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ email, password, name: email.split("@")[0] }),
-  });
-  const upData = await up.json();
-  if (!up.ok || upData.error) throw new Error("Could not sign in or create an account.");
+  const up = await post("/api/auth/sign-up/email", { email, password, name: email.split("@")[0] });
+  const upData = await up.json().catch(() => null);
+  if (!up.ok || upData?.error) throw new Error("Could not sign in or create an account.");
   window.location.reload();
 }
 
 export async function signOut(): Promise<void> {
-  await fetch("/api/auth/sign-out", { method: "POST", credentials: "same-origin" });
+  await fetch("/api/auth/sign-out", {
+    method: "POST",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  }).catch(() => undefined);
   window.location.reload();
 }
 
@@ -164,13 +271,7 @@ export async function signOut(): Promise<void> {
 
 export const loadServers = () => api<{ servers: ServerRow[] }>("/api/servers").then((r) => r.servers || []);
 export const loadTokens = () => api<{ tokens: TokenRow[] }>("/api/tokens").then((r) => r.tokens || []);
-export const loadStatus = async (): Promise<StatusData | null> => {
-  try {
-    return await api<StatusData>("/api/status");
-  } catch {
-    return null;
-  }
-};
+export const loadStatus = () => api<StatusData>("/api/status");
 export const loadMe = () => api<MeData>("/api/me");
 
 export interface UsageSummary {

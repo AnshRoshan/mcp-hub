@@ -9,7 +9,7 @@ import { useStore } from "../lib/store";
 import { Badge, Btn, Empty, FdSwitch, useConfirm } from "../components/ui";
 
 const selectCls =
-  "w-full rounded-[6px] border border-border-emphasized bg-background-body px-3 py-2 text-sm text-primary focus:outline-2 focus:outline-[var(--fd-telemetry)]";
+  "w-full rounded-[6px] border border-border-strong bg-body px-3 py-2 text-sm text-primary focus:outline-2 focus:outline-[var(--fd-telemetry)]";
 
 interface ServerForm {
   key: string;
@@ -28,10 +28,15 @@ const emptyForm = (): ServerForm => ({
   command: "", args: "", cwd: "", url: "", env: "", headers: "",
 });
 
+/** A prefilled `KEY=` line with no value is a key the user never filled in. */
+const withValues = (map: Record<string, string>) =>
+  Object.fromEntries(Object.entries(map).filter(([, v]) => v));
+
 export default function Servers() {
   const { servers, setServers, refreshAll, toast, prefill, applyPrefill } = useStore();
   const [editing, setEditing] = useState<ServerRow | "new" | null>(null);
   const [draft, setDraft] = useState<ServerRow | null>(null);
+  const [replaceSecrets, setReplaceSecrets] = useState(false);
   const { ask, confirmEl } = useConfirm();
   const formTop = useRef<HTMLDivElement>(null);
 
@@ -73,12 +78,14 @@ export default function Servers() {
   const openNew = () => {
     setEditing("new");
     setDraft(null);
+    setReplaceSecrets(false);
     setForm(emptyForm());
     requestAnimationFrame(() => formTop.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
   const openEdit = (s: ServerRow) => {
     setEditing(s);
+    setReplaceSecrets(false);
     setForm({
       key: s.key, category: s.category || "Development", type: s.type,
       command: s.command || "", args: (s.args || []).join(", "), cwd: s.cwd || "",
@@ -87,18 +94,38 @@ export default function Servers() {
     requestAnimationFrame(() => formTop.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
-  const close = () => { setEditing(null); setDraft(null); };
+  // The row's encrypted values are never readable client-side, so "edit"
+  // can only mean "replace the whole map" — prefill the key names so the
+  // user sees exactly what has to be re-entered.
+  const startReplace = (s: ServerRow) => {
+    setReplaceSecrets(true);
+    setForm((f) => ({
+      ...f,
+      env: s.envKeys.map((k) => `${k}=`).join("\n"),
+      headers: s.headerKeys.map((k) => `${k}:`).join("\n"),
+    }));
+  };
+
+  const close = () => { setEditing(null); setDraft(null); setReplaceSecrets(false); };
+
+  const row = editing && editing !== "new" ? editing : null;
+  const editKeys = row ? [...row.envKeys, ...row.headerKeys] : [];
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const isEdit = editing !== "new" && editing !== null;
+    const isEdit = row !== null;
     const body: ServerBody = {
       key: form.key.trim(),
       type: form.type,
       category: form.category,
-      env: parseKV(form.env),
-      headers: form.type === "http" ? parseHeaders(form.headers) : undefined,
     };
+    // patchServer replaces the stored map whenever env/headers appear in the
+    // body — `{}` included — so an edit that never opened the credentials
+    // panel must leave both keys out entirely.
+    if (!isEdit || replaceSecrets) {
+      body.env = withValues(parseKV(form.env));
+      if (form.type === "http") body.headers = withValues(parseHeaders(form.headers));
+    }
     if (form.type === "stdio") {
       body.command = form.command.trim();
       body.args = form.args.split(",").map((s) => s.trim()).filter(Boolean);
@@ -107,7 +134,7 @@ export default function Servers() {
       body.url = form.url.trim();
     }
     try {
-      await saveServer(body, isEdit ? (editing as ServerRow).id : undefined);
+      await saveServer(body, isEdit ? row.id : undefined);
       close();
       toast(isEdit ? "Server updated" : "Server added");
       await refreshAll();
@@ -119,7 +146,7 @@ export default function Servers() {
   const onToggle = async (s: ServerRow, v: boolean) => {
     try {
       await toggleServer(s.id, v);
-      setServers(servers.map((x) => (x.id === s.id ? { ...x, enabled: v } : x)));
+      setServers((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled: v } : x)));
     } catch (err) {
       toast(errMsg(err, "Toggle failed"));
     }
@@ -134,7 +161,7 @@ export default function Servers() {
     if (!ok) return;
     try {
       await deleteServer(s.id);
-      setServers(servers.filter((x) => x.id !== s.id));
+      setServers((prev) => prev.filter((x) => x.id !== s.id));
       toast("Server deleted");
     } catch (err) {
       toast(errMsg(err, "Delete failed"));
@@ -163,7 +190,7 @@ export default function Servers() {
         <section className="panel">
           <div className="mb-2 flex items-center justify-between">
             <Heading level={4}>
-              {editing === "new" ? (draft ? `Add ${draft.key}` : "Add server") : `Edit ${(editing as ServerRow).key}`}
+              {editing === "new" ? (draft ? `Add ${draft.key}` : "Add server") : `Edit ${row?.key}`}
             </Heading>
             <button type="button" className="btn-icon" aria-label="Close" onClick={close}>
               <X size={15} />
@@ -202,10 +229,36 @@ export default function Servers() {
             {form.type === "stdio" && (
               <TextInput label="Working directory" placeholder="/path/to/project" isOptional value={form.cwd} onChange={(v) => setForm({ ...form, cwd: v })} />
             )}
-            <div>
-              <TextArea label="Environment (KEY=VALUE, one per line — stored encrypted)" rows={3} placeholder={"MY_API_KEY=secret\nOTHER=value"} value={form.env} onChange={(v) => setForm({ ...form, env: v })} />
-            </div>
-            {form.type === "http" && (
+            {row && !replaceSecrets && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-border bg-surface px-3 py-2 md:col-span-2">
+                <Text type="supporting" size="sm">
+                  {editKeys.length
+                    ? <>Stored, encrypted, never shown again: <code className="font-mono text-xs">{editKeys.join(", ")}</code></>
+                    : "No stored credentials on this server."}
+                </Text>
+                <Btn variant="plate" onClick={() => startReplace(row)}>
+                  {editKeys.length ? "Replace credentials" : "Add credentials"}
+                </Btn>
+              </div>
+            )}
+            {(!row || replaceSecrets) && (
+              <div className="md:col-span-2">
+                <TextArea
+                  label="Environment (KEY=VALUE, one per line — stored encrypted)"
+                  rows={3}
+                  placeholder={"MY_API_KEY=secret\nOTHER=value"}
+                  value={form.env}
+                  onChange={(v) => setForm({ ...form, env: v })}
+                />
+                {row && (
+                  <Text type="supporting" size="sm" className="mt-1.5">
+                    Saving replaces every stored value at once — re-enter each key you want to keep;
+                    lines with no value are dropped.
+                  </Text>
+                )}
+              </div>
+            )}
+            {form.type === "http" && (!row || replaceSecrets) && (
               <div>
                 <TextArea label="HTTP headers (Key: Value, one per line)" rows={2} placeholder="Authorization: Bearer xxx" value={form.headers} onChange={(v) => setForm({ ...form, headers: v })} />
               </div>

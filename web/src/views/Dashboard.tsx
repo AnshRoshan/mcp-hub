@@ -2,21 +2,60 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { ArrowRight, Cable } from "lucide-react";
 import { loadUsage, type UsageSummary } from "../lib/api";
-import { MODULES } from "../lib/catalog";
+import { mcpEndpoint } from "../lib/config";
 import { useStore } from "../lib/store";
 import { Badge, Btn, CopyBtn } from "../components/ui";
 
+interface WallRow {
+  name: string;
+  category?: string;
+  count: number | null;
+  flag: string;
+  tone: "ok" | "off" | "warn";
+  note: string;
+}
+
 export default function Dashboard() {
-  const { status, servers, tokens, me, navigate } = useStore();
+  const { status, statusError, servers, tokens, me, navigate } = useStore();
   const s = status || {};
-  const modules = (s.modules || []).filter((m) => MODULES[m.name]);
+  // No status means no answer from the workstation — never a wall of all-GO.
+  const live = status !== null;
   const disabled = new Set(me?.disabledModules || []);
+  const modules = s.modules || [];
+  const upstreams = [...(s.upstreams || []), ...(s.userUpstreams || [])];
   const yourTools = modules.reduce((n, m) => (m.enabled && !disabled.has(m.name) ? n + (m.toolCount || 0) : n), 0);
   const activeServers = servers.filter((sv) => sv.enabled).length;
   const modulesOn = modules.filter((m) => m.enabled && !disabled.has(m.name)).length;
-  const cards = modules.length - modulesOn;
+  const onCard = modules.length - modulesOn + upstreams.filter((u) => u.state !== "connected").length;
 
-  const endpoint = `${window.location.origin}/mcp`;
+  const wall: WallRow[] = [
+    ...modules.map<WallRow>((m) => {
+      const userOff = disabled.has(m.name);
+      const go = m.enabled && !userOff;
+      return {
+        name: m.name,
+        category: m.category,
+        count: go ? m.toolCount || 0 : null,
+        flag: go ? "GO" : m.enabled ? "OFF" : "CARD",
+        tone: go ? "ok" : m.enabled ? "off" : "warn",
+        note: go
+          ? `${m.toolCount || 0} tools ready`
+          : m.enabled ? "you switched it off"
+          : m.reason || "needs setup",
+      };
+    }),
+    ...upstreams.map<WallRow>((u) => ({
+      name: u.key,
+      category: "Upstream",
+      count: u.state === "connected" ? u.toolCount : null,
+      flag: u.state === "connected" ? "GO" : "CARD",
+      tone: u.state === "connected" ? "ok" : "warn",
+      note: u.error || u.detail,
+    })),
+  ];
+  const wallGo = wall.filter((r) => r.tone === "ok").length;
+
+  const endpoint = mcpEndpoint();
   const done1 = servers.length > 0;
   const done2 = tokens.length > 0;
   const done3 = done1 && done2;
@@ -51,23 +90,29 @@ export default function Dashboard() {
       </div>
 
       <section className="metrics-rail" aria-label="Endpoint telemetry">
-        <Tile label="Tools" value={yourTools || s.totalTools || 0} unit="exposed" lit={pct(yourTools, 60)} />
+        <Tile label="Tools" value={live ? yourTools || s.totalTools || 0 : null} unit={live ? "exposed" : "unknown"} lit={live ? pct(yourTools, 60) : 0} />
         <Tile label="Servers" value={activeServers} unit={`of ${servers.length} linked`} lit={pct(activeServers, Math.max(servers.length, 1))} tone={activeServers || servers.length === 0 ? "go" : "caution"} />
         <Tile label="Tokens" value={tokens.length} unit="live" lit={pct(tokens.length, 6)} />
-        <Tile label="Modules" value={modulesOn} unit={cards ? `${cards} on card` : "all go"} lit={pct(modulesOn, modules.length || 1)} tone={cards ? "mixed" : "go"} />
+        <Tile label="Modules" value={live ? modulesOn : null} unit={live ? (onCard ? `${onCard} on card` : "all go") : "unknown"} lit={live ? pct(modulesOn, modules.length || 1) : 0} tone={onCard ? "mixed" : "go"} />
       </section>
 
       <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,2.1fr)_minmax(320px,0.9fr)]">
         <section>
           <div className="section-heading mb-3">
             <Heading level={4} className="!mb-0">Systems Status Wall</Heading>
-            <span className="section-count">{modulesOn} / {modules.length}</span>
+            <span className="section-count">{wallGo} / {wall.length}</span>
           </div>
-          {modules.length === 0 ? (
+          {!live ? (
+            <div className="cold-instrument">
+              <span className="cold-flag">No signal</span>
+              <div className="cold-title">Status unavailable</div>
+              <p className="cold-copy">{statusError || "The workstation did not report its systems."}</p>
+            </div>
+          ) : wall.length === 0 ? (
             <div className="cold-instrument">
               <span className="cold-flag">No signal</span>
               <div className="cold-title">The wall is cold</div>
-              <p className="cold-copy">No module data yet — start the server to bring the status wall live.</p>
+              <p className="cold-copy">No modules or upstream servers reported yet.</p>
             </div>
           ) : (
             <div className="module-summary">
@@ -76,28 +121,19 @@ export default function Dashboard() {
                 <span>Tools</span>
                 <span style={{ textAlign: "right" }}>Flag</span>
               </div>
-              {modules.map((m) => {
-                const userOff = disabled.has(m.name);
-                const go = m.enabled && !userOff;
-                const flag = go ? "GO" : m.enabled ? "OFF" : "CARD";
-                const note = go
-                  ? `${m.toolCount || 0} tools ready`
-                  : m.enabled ? "you switched it off"
-                  : m.reason || "needs setup";
-                return (
-                  <div key={m.name} className={`module-summary-row ${go ? "" : "row-dim"}`}>
-                    <div className="min-w-0">
-                      <span className="truncate text-primary font-medium">{m.name}</span>
-                      {m.category && <span className="ml-2 text-tertiary text-[11px] uppercase tracking-[0.1em]">{m.category}</span>}
-                    </div>
-                    <span className="telemetry text-xs text-secondary">{go ? m.toolCount || 0 : "—"}</span>
-                    <span style={{ textAlign: "right" }}>
-                      <Badge tone={go ? "ok" : m.enabled ? "off" : "warn"}>{flag}</Badge>
-                    </span>
-                    <span className="leader-note">{note}</span>
+              {wall.map((r) => (
+                <div key={`${r.category}-${r.name}`} className={`module-summary-row ${r.tone === "ok" ? "" : "row-dim"}`}>
+                  <div className="min-w-0">
+                    <span className="truncate text-primary font-medium">{r.name}</span>
+                    {r.category && <span className="ml-2 text-disabled text-[11px] uppercase tracking-[0.1em]">{r.category}</span>}
                   </div>
-                );
-              })}
+                  <span className="telemetry text-xs text-secondary">{r.count ?? "—"}</span>
+                  <span style={{ textAlign: "right" }}>
+                    <Badge tone={r.tone}>{r.flag}</Badge>
+                  </span>
+                  <span className="leader-note">{r.note}</span>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -145,7 +181,7 @@ function pct(value: number, max: number): number {
 
 /** Telemetry tile: engraved label, mono value, LED ladder of real load. */
 function Tile({ label, value, unit, lit, tone = "telemetry" }: {
-  label: string; value: number; unit: string; lit: number; tone?: "go" | "caution" | "mixed" | "telemetry";
+  label: string; value: number | null; unit: string; lit: number; tone?: "go" | "caution" | "mixed" | "telemetry";
 }) {
   const color =
     tone === "go" ? "var(--fd-go)" : tone === "caution" ? "var(--fd-caution)" :
@@ -154,8 +190,8 @@ function Tile({ label, value, unit, lit, tone = "telemetry" }: {
     <div className="power-on">
       <Text type="label" size="sm" className="text-secondary">{label}</Text>
       <div className="mt-2 flex items-baseline gap-2">
-        <span className="telemetry text-[34px] font-bold leading-none text-primary">{value}</span>
-        <span className="telemetry text-[10.5px] uppercase tracking-[0.1em] text-tertiary">{unit}</span>
+        <span className="telemetry text-[34px] font-bold leading-none text-primary">{value ?? "—"}</span>
+        <span className="telemetry text-[10.5px] uppercase tracking-[0.1em] text-disabled">{unit}</span>
       </div>
       <div className="led-ladder" aria-hidden>
         {Array.from({ length: 12 }, (_, i) => (

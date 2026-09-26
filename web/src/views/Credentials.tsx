@@ -12,15 +12,21 @@ export default function Credentials() {
   const [keys, setKeys] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState<string | null>(null);
   const { ask, confirmEl } = useConfirm();
 
   const load = async () => {
+    setLoading(true);
+    setFailed(null);
     try {
       const data: SecretsData = await loadSecrets();
       setAllowed(data.allowed ?? []);
       setKeys(data.keys ?? []);
     } catch (err) {
-      toast(errMsg(err, "Could not load credentials"));
+      setFailed(errMsg(err, "Could not load credentials"));
+    } finally {
+      setLoading(false);
     }
   };
   useEffect(() => {
@@ -72,11 +78,25 @@ export default function Credentials() {
         </div>
       </div>
 
-      {allowed.length === 0 ? (
-        <Empty>Loading the credential catalog…</Empty>
+      {failed ? (
+        <div className="flex flex-col gap-3">
+          <Empty title="Credential catalog unavailable">{failed}</Empty>
+          <Btn variant="primary" className="self-start" onClick={() => void load()}>Retry</Btn>
+        </div>
+      ) : loading ? (
+        <div className="capability-list">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="capability-row">
+              <div className="skeleton h-8 w-52" />
+              <div className="skeleton h-9 w-64" />
+            </div>
+          ))}
+        </div>
+      ) : allowed.length === 0 ? (
+        <Empty title="No credentials needed">This workstation has no built-in module that takes a personal key.</Empty>
       ) : (
         Object.entries(byModule).map(([mod, specs]) => (
-          <section key={mod} className="flex flex-col gap-3">
+          <section key={mod} aria-label={mod} className="flex flex-col gap-3">
             <Text type="label" color="secondary" className="uppercase tracking-[0.12em]">{mod}</Text>
             <div className="capability-list">
               {specs.map((spec) => {
@@ -100,7 +120,8 @@ export default function Credentials() {
                     <div className="flex min-w-0 flex-none items-end gap-2">
                       <div className="w-64 max-w-full">
                         <TextInput
-                          label=""
+                          label={spec.label}
+                          isLabelHidden
                           type={/URL$/.test(spec.name) ? "text" : "password"}
                           placeholder={isSet ? "Replace value…" : "Paste value…"}
                           value={drafts[spec.name] ?? ""}

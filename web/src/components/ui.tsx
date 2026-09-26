@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Icon } from "@astryxdesign/core/Icon";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
@@ -29,6 +29,16 @@ export function ToastBridge() {
 
 /* ---------- Stamped state flags (Flight Dynamics state law) ---------- */
 
+type FlagTone = "go" | "card" | "off" | "telemetry" | "neutral";
+
+function Flag({ tone, children }: { tone: FlagTone; children: ReactNode }) {
+  return <span className={tone === "neutral" ? "flag" : `flag flag-${tone}`}>{children}</span>;
+}
+
+const BADGE_TONES: Record<"ok" | "off" | "warn" | "neutral", FlagTone> = {
+  ok: "go", warn: "card", off: "off", neutral: "neutral",
+};
+
 export function Badge({
   tone = "neutral",
   children,
@@ -36,10 +46,13 @@ export function Badge({
   tone?: "ok" | "off" | "warn" | "neutral";
   children: ReactNode;
 }) {
-  const cls =
-    tone === "ok" ? "flag flag-go" : tone === "warn" ? "flag flag-card" : tone === "off" ? "flag flag-off" : "flag";
-  return <span className={cls}>{children}</span>;
+  return <Flag tone={BADGE_TONES[tone]}>{children}</Flag>;
 }
+
+const TAG_TONES: Record<"http" | "stdio" | "official" | "neutral", FlagTone> = {
+  // Transport/provenance plates: cyan is the telemetry register, green is verified.
+  official: "go", http: "telemetry", stdio: "telemetry", neutral: "neutral",
+};
 
 export function Tag({
   tone = "neutral",
@@ -48,10 +61,7 @@ export function Tag({
   tone?: "http" | "stdio" | "official" | "neutral";
   children: ReactNode;
 }) {
-  // Transport/provenance plates: cyan is the telemetry register, green is verified.
-  const cls =
-    tone === "official" ? "flag flag-go" : tone === "http" || tone === "stdio" ? "flag flag-telemetry" : "flag";
-  return <span className={cls}>{children}</span>;
+  return <Flag tone={TAG_TONES[tone]}>{children}</Flag>;
 }
 
 /* ---------- Key/value row ---------- */
@@ -76,14 +86,18 @@ export function KvList({ children, title }: { children: ReactNode; title?: React
 
 export function CopyBtn({ text, label = "Copy", className = "" }: { text: string; label?: string; className?: string }) {
   const [copied, setCopied] = useState(false);
+  const reset = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (reset.current !== null) clearTimeout(reset.current); }, []);
   return (
     <button
       type="button"
       className={`btn-icon ${copied ? "is-copied" : ""} ${className}`}
+      aria-label={label || (copied ? "Copied" : "Copy to clipboard")}
       onClick={async () => {
         await copyText(text);
         setCopied(true);
-        setTimeout(() => setCopied(false), 1600);
+        if (reset.current !== null) clearTimeout(reset.current);
+        reset.current = setTimeout(() => setCopied(false), 1600);
       }}
     >
       <Icon icon={copied ? Check : Copy} size="xsm" color={copied ? "success" : "secondary"} />
@@ -125,19 +139,34 @@ export function FdSwitch({ checked, onChange, label }: { checked: boolean; onCha
 }
 
 /** Detent tab rail — active plate carries a top telemetry bar. */
-export function TabRail<T extends string>({ items, value, onChange }: {
+export function TabRail<T extends string>({ items, value, onChange, idBase = "tabs" }: {
   items: { id: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  idBase?: string;
 }) {
+  const tabId = (id: T) => `${idBase}-tab-${id}`;
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const at = items.findIndex((t) => t.id === value);
+    const next = items[(at + step + items.length) % items.length];
+    if (next) onChange(next.id);
+  };
+
   return (
-    <div className="tab-rail" role="tablist" aria-label="Client targets">
+    <div className="tab-rail" role="tablist" aria-label="Client targets" onKeyDown={onKeyDown}>
       {items.map((t) => (
         <button
           key={t.id}
+          id={tabId(t.id)}
           type="button"
           role="tab"
           aria-selected={value === t.id}
+          aria-controls={`${idBase}-panel`}
+          tabIndex={value === t.id ? 0 : -1}
           className={`tab-plate ${value === t.id ? "is-active" : ""}`}
           onClick={() => onChange(t.id)}
         >
@@ -148,9 +177,29 @@ export function TabRail<T extends string>({ items, value, onChange }: {
   );
 }
 
+/** The single panel a TabRail drives. */
+export function TabPanel({ idBase, activeId, className = "", children }: {
+  idBase: string;
+  activeId: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      id={`${idBase}-panel`}
+      role="tabpanel"
+      tabIndex={0}
+      aria-labelledby={`${idBase}-tab-${activeId}`}
+      className={className}
+    >
+      {children}
+    </div>
+  );
+}
+
 /* ---------- Cold-instrument empty state ---------- */
 
-export function Empty({ title = "Nothing here yet", children }: { title?: string; children: string }) {
+export function Empty({ title = "Nothing here yet", children }: { title?: string; children: ReactNode }) {
   return (
     <div className="cold-instrument">
       <span className="cold-flag">
