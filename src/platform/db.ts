@@ -94,8 +94,11 @@ function authColType(type: string): string {
 
 export class PlatformDb {
   readonly db: DatabaseSync;
+  /** The database file — its directory is also where per-user storage roots live. */
+  readonly filePath: string;
 
   constructor(path: string) {
+    this.filePath = path;
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec("PRAGMA journal_mode = WAL");
