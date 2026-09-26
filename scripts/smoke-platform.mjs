@@ -130,6 +130,16 @@ async function main() {
     const time = await mcpCall(token, "get_current_time", {});
     check("tools/call works", JSON.stringify(time?.content ?? "").includes("UTC"));
 
+    console.log("== devkit + youtube modules ==");
+    const rx = await mcpCall(token, "regex_test", { pattern: "(\\d{4})-\\d{2}", sample: "x 2026-09 y" });
+    check("regex_test returns groups over MCP", JSON.stringify(rx?.content ?? "").includes("2026"));
+    const crn = await mcpCall(token, "cron_parse", { expression: "0 9 * * 1", from: "2026-09-24T00:00:00Z", count: 1 });
+    check("cron_parse computes the next UTC run", JSON.stringify(crn?.content ?? "").includes("2026-09-28T09:00"));
+    const namesDevkit = (await mcp("tools/list", token))?.tools?.map((t) => t.name) ?? [];
+    check("devkit + youtube tools are listed", ["text_diff", "json_query", "color_contrast", "yt_video_info"].every((n) => namesDevkit.includes(n)), "missing some");
+    const ytBad = await mcpCall(token, "yt_video_info", { video: "https://example.com/nope" });
+    check("yt_video_info rejects non-YouTube input with guidance", JSON.stringify(ytBad?.content ?? "").includes("11-character"));
+
     console.log("== register stdio server with encrypted env ==");
     const created = await api("/api/servers", {
       cookie,
