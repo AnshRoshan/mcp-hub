@@ -1,228 +1,137 @@
 ---
 name: MCP Workstation
-description: A professional control room built on Meta's Astryx design system — quiet neutral dark surfaces, system type, one accent, and precise Astryx components throughout.
+description: The Flight Dynamics world — a mission-control status wall where every system reads GO / CAUTION / NO-GO at a glance, and color only ever answers a real state.
 colors:
-  body: "#1b1b1b"
-  surface: "#262626"
-  card: "#1b1b1b"
-  popover: "#1b1b1b"
-  text: "#fafafa"
-  text-secondary: "#a3a3a3"
-  text-disabled: "#525252"
-  accent: "#ebebeb"
-  on-accent: "#171717"
-  border: "rgba(255, 255, 255, 0.10)"
-  border-emphasized: "#525252"
-  success: "#9fe59b"
-  warning: "#fdcf4f"
-  error: "#ffc6c1"
-  blue-vivid: "#a0caff"
-  green-vivid: "#9fe59b"
-  purple-vivid: "#efa8ff"
+  body: "#0d1014"
+  surface: "#14181d"
+  card: "#10141a"
+  popover: "#1a1f26"
+  muted: "#191e25"
+  text: "#e6e2d6"
+  text-secondary: "#a5a294"
+  text-disabled: "#5b6068"
+  accent: "#ded9cb"
+  on-accent: "#12161b"
+  border: "rgba(230, 226, 214, 0.11)"
+  border-emphasized: "#3a424c"
+  go: "#8fdc9a"
+  caution: "#e8b34b"
+  abort: "#e0705f"
+  telemetry: "#6fc3d6"
+  day-paper-body: "#eceadf"
+  day-go: "#1c7d40"
+  day-caution: "#8a5c05"
+  day-abort: "#b5402e"
+  day-telemetry: "#0d687c"
 typography:
   display:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
-    fontWeight: 700
-    lineHeight: 1.2
+    fontFamily: "Archivo, system-ui, sans-serif"
+    fontWeight: 600-700
   body:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "Archivo, system-ui, sans-serif"
     fontSize: "14px"
-    fontWeight: 400
-    lineHeight: 1.43
   label:
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily: "Archivo, system-ui, sans-serif"
     fontSize: "11px"
-    fontWeight: 600
     textTransform: "uppercase"
-    letterSpacing: "0.08em"
+    letterSpacing: "0.12em"
   mono:
-    fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace"
-    fontSize: "0.9em"
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    purpose: "the measurement register — values, clocks, codes, flags"
+  scale:
+    flag: "10px"
+    leader-note: "10.5px"
+    strip-label: "11px"
+    mono-value: "12px"
+    tool-row: "12.5px"
+    body-sm: "13px"
+    body: "14px"
+    page-title-min: "22px"
+    page-title: "30px"
+    tile-value: "34px"
 rounded:
-  container: "12px"
-  element: "8px"
-  inner: "6px"
-spacing:
-  base: "4px"
-  cardPadding: "16px"
-  contentPadding: "24px"
-  gridGap: "14px"
-components:
-  card:
-    background: "{colors.card}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.container}"
-    border: "1px solid {colors.border}"
-  button-primary:
-    background: "{colors.accent}"
-    textColor: "{colors.on-accent}"
-  button-secondary:
-    background: "{colors.surface}"
-    textColor: "{colors.text}"
-    border: "1px solid {colors.border}"
-  input:
-    background: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.element}"
-    border: "1px solid {colors.border}"
+  led: "1px"
+  stamp: "3px"
+  plate: "4px"
+  panel: "6px"
 ---
 
-# Design System: MCP Workstation
+# Design System: MCP Workstation — Flight Dynamics
 
-## Overview
+## Star: "The Status Wall"
 
-**Creative North Star: "The Professional Control Room"**
+The dashboard is a mission-control flight-rules board, not a card grid. A master
+strip carries the uplink LED, the GO/CARD tally and a UTC clock; telemetry tiles
+show values in mono with LED ladders that measure real load; the module list is a
+**systems status wall** where every row ends in a stamped flag and hover pins a
+leader-note annotation to the row. Trust comes from state legibility: every light
+on the panel answers a real system state or it does not exist.
 
-MCP Workstation is a dark, calm, professional dashboard built on **Meta's Astryx design
-system** (the Neutral theme, forced dark). Every surface is a quiet neutral — the page
-paints `#1b1b1b`, content sits on `#262626`, cards on `#1b1b1b` with hairline borders —
-so the *data* is the loudest thing on screen. There is no glass, no glow, no aurora, no
-decorative gradient: the previous liquid-glass observatory was rejected as unprofessional.
-Trust comes from restraint — system type, a strict neutral palette, one semantic accent,
-and Astryx's own motion (pressed buttons, toggled switches, expanding dialogs).
+## The State Law (binding)
 
-The product's one mark is the ⚡ bolt (product brand commitment), shown in the nav logo
-and favicon; it never becomes a decorative motif.
+Color is never decoration. Exactly four meanings, held across both registers
+(night console / daylight cockpit — hues retuned so they read emissive on
+black and ink-stamped on ivory):
+- **GO green** `#8fdc9a` night / `#1c7d40` day — enabled, connected, live.
+- **CAUTION amber** `#e8b34b` night / `#8a5c05` day — needs setup, attention, selection pending.
+- **ABORT red** `#e0705f` night / `#b5402e` day — errors and destructive actions.
+- **TELEMETRY cyan** `#6fc3d6` night / `#0d687c` day — measurements and transport info (clock, values, http/stdio plates).
+Everything else is flight-black graphite or 1D ivory. Selection is amber (the
+safelight exception, a working color). Disabled rows take a hazard-stripe ground,
+not dimmed opacity theater.
 
-**Key Characteristics:**
-- **Astryx everywhere** — every control, surface, and overlay is an Astryx component
-  (AppShell, TopNav, SideNav, Card, Button, Switch, Dialog, AlertDialog, CodeBlock,
-  TabList, MetadataList, Banner, EmptyState, StatusDot, Avatar, DropdownMenu, Collapsible,
-  TextInput/TextArea). No hand-rolled UI primitives.
-- **Dark by default** — `Theme mode="dark"` + `data-theme="dark"` on `<html>`; the theme's
-  `light-dark()` tokens resolve to the dark branch.
-- **Two-tone depth** — the shell is `variant="elevated"`: wash nav over a `surface`
-  content column; hairline borders do the separation, never shadows.
-- **System type** — the Neutral theme ships with system fonts; no webfont download.
-- **Semantic color only** — green = on/connected, amber = needs setup, red = destructive;
-  every other pixel is neutral gray.
-- **Precise state** — Astryx toggles, pressed buttons, focus rings, and dialog
-  transitions; `prefers-reduced-motion` collapses them.
+## Surfaces
 
-## Colors
+Two registers of one world, switched by the DAY/NIGHT plate in the mission
+strip (persisted in `localStorage.mcw-theme`, latched pre-paint, Astryx `Theme`
+mode follows the same state):
+- **Night console** — body `#0d1014` → surface `#14181d` → card `#10141a` → popover `#1a1f26`; ivory text, ivory plate primary action.
+- **Daylight cockpit** — paper body `#eceadf` → surface `#f4f2e9` → card `#faf9f2` → popover `#fffef8`; ink text, ink plate primary action.
+Panels are 6px, plates 4px, stamps 3px, LED segments 1px — square-ish hardware
+corners, never pills. Hairline seams separate; shadows are reserved for
+overlay depth. Fonts: **Archivo** (instrument grotesk, engraved-caps labels) and
+**JetBrains Mono** (every number, flag, clock, code); loaded via Google Fonts CDN
+with system fallbacks.
 
-The palette is Astryx Neutral in dark mode. All values come from the theme tokens
-(`--color-*`) — nothing is hard-coded in components.
-
-### Primary
-- **Body `#1b1b1b`** — page background (painted on `html`/`body`, not just the shell, so
-  overscroll and dialogs stay clean).
-- **Surface `#262626`** — the elevated content column, inputs, secondary buttons, pills.
-- **Card `#1b1b1b`** — cards sit one step darker than the content column they float on.
-
-### Text
-- **Primary `#fafafa`**, **Secondary `#a3a3a3`**, **Disabled `#525252`**. Code and
-  endpoints use the primary text with the mono stack.
-
-### Accent
-- The Neutral theme's accent is near-white (`#ebebeb`) — primary buttons are white with
-  dark text (`on-accent #171717`). This is deliberately monochrome; the accent is
-  reserved for the primary action, not decoration.
-
-### Status
-- **Success `#9fe59b`** — "on", connected, saved.
-- **Warning `#fdcf4f`** — needs setup, platform off.
-- **Error `#ffc6c1`** — failures and destructive actions (Sign out, Delete, Revoke).
-
-### Named Rules
-**The Restraint Rule.** If an element isn't data, state, or the primary action, it's a
-neutral gray. Color is a signal, never a theme.
-
-**The Clean-Canvas Rule.** The page background must be painted at the document level
-(`html`/`body` use `--color-background-body`), so load, overscroll, and dialogs never
-flash a raw canvas.
-
-## Typography
-
-**System stack** — `system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`, with
-`ui-monospace` for code. No webfonts: instant paint, native rendering.
-
-### Hierarchy
-- **Heading level 2** (page titles) — bold, ~20px.
-- **Heading level 4/5** (cards, category sections).
-- **Body / supporting** — Astryx `Text` types; supporting is the muted register.
-- **Label** — 11px semibold uppercase with tracking, used sparingly (stat captions).
-- **Mono** — endpoints, configs, tool names, route codes (`TIM`, `SRV`, …), timestamps.
-
-### Named Rules
-**The Tabular Rule.** Numerals in readouts use `tabular-nums` so stat values never jiggle.
-**The Mono Register.** Mono is the code register only — endpoints, commands, tool names.
-
-## Layout
-
-**AppShell** (`variant="elevated"`, `contentPadding={6}`): a `TopNav` (logo, Endpoint
-button, connected status, user menu) over a collapsible `SideNav` (Console / Discover /
-Manage / Account sections). On mobile the SideNav becomes a drawer with the AppShell's
-built-in toggle; the top nav keeps logo, status, endpoint, and profile in reach.
-
-Content: 24px gutters, 14px grid gaps. Stat grid is 4 columns (2 on tablet, 2 on phone);
-directory and skills cards auto-fill at `md:grid-cols-2` / `2xl:grid-cols-3`; connect is
-`340px + 1fr` collapsing to 1 column.
-
-## Surfaces & Depth
-
-Depth is two tones and hairline borders, not shadows. The `elevated` shell draws the
-content column in `surface` over the `body` wash; cards are `card`-toned with a 1px
-border and 12px radius. Dialogs float above an overlay (`--color-overlay`); toasts stack
-in the Astryx `ToastViewport` bottom-end with their enter/exit motion.
+**Instrument type ramp (documented steps):** 10px flag/wall-head caps ·
+10.5px leader-notes · 11px mono strip labels/section counts · 12px mono tool
+names/values · 12.5px tool rows/endpoint code · 13px body-sm (status wall,
+module meta). Larger instrument reads (tile values, page titles) are set in
+views with Tailwind steps; radius scale: 1 / 3 / 4 / 6px only.
 
 ## Components
 
-- **Buttons** — Astryx variants: `primary` (white/dark), `secondary`, `ghost`,
-  `destructive`; `isLoading` spinners; icon + label everywhere it helps.
-- **Cards** — `Card` with the padding scale; `variant="muted"` for de-emphasized tiles,
-  `variant="green"`/`"red"` only for the new-token reveal and the account/danger card.
-- **Inputs** — Astryx `TextInput` / `TextArea` with labels, required/optional markers,
-  descriptions, and status states; native `<select>` styled with the same tokens for
-  category/type pickers (Astryx has no plain Select).
-- **Switches** — Astryx `Switch` for server on/off, module and per-tool toggles, skills.
-- **Badges / tags** — Astryx `Badge` with semantic variants (success for "on", warning
-  for "needs setup") and hue variants for directory provenance (blue stdio, green
-  official, purple http, neutral reference/community).
-- **Dialogs** — `Dialog` + `DialogHeader` for the skill preview; `AlertDialog` for every
-  destructive confirmation (delete server, revoke token). No `window.confirm`.
-- **Code** — `CodeBlock` (copy button, line numbers, max-height scroll) for skill
-  previews and connect-guide configs.
-- **Empty states** — `EmptyState` with an icon and an action when there's an obvious one.
-- **Toasts** — Astryx `ToastViewport` + `useToast`, fed from the store's message bus.
-- **Metadata** — `MetadataList` for the System card, endpoint/auth rows, and About.
+- **Flags (`.flag`)** — mono uppercase stamps: `GO / CAUTION / CARD / NO-GO / OFF / LIVE / ACTIVE`, tinted ground + border; replaces pill badges.
+- **Telemetry tiles** — engraved label, 34px mono value, 12-segment LED ladder (`--led-color` per state); power-on sweep is the one authored motion.
+- **Leader-notes** — hover/focus annotations pinned by a hairline to their row.
+- **Uplink LED** — breathing green dot = endpoint linked; static red = down.
+- **Pre-flight steps** — square number plates that stamp GO-green when done.
+- **DAY/NIGHT plate** — machined selector in the mission strip switching the register.
+- Astryx components remain the control substrate (AppShell, SideNav, Switch,
+  Dialog, TextInput…), re-tuned through `--color-*` token overrides only.
 
 ## Motion
 
-Astryx's built-in motion only: button presses, switch throws, dialog/dropdown popovers,
-toast enter/exit. No authored choreography — motion exists to make state legible, never
-to entertain. `prefers-reduced-motion` is respected via the Astryx + Tailwind cascade.
+Grammar: one exponential-out ease `--ease-expo` (cubic-bezier .16/1/.3/1) for anything
+interactive; every control takes a tactile press (`scale .985`); panel cards
+lift 1px on hover. One authored moment: the instrument power-on sweep (420ms,
+staggered 70ms per tile); the status wall cascades its rows once (260ms). The
+uplink LED breathes. Hover reveals leader-notes. Loading paints layout-shaped
+skeletons (transform-only shimmer, never layout props). Everything else is
+Astryx-native; `prefers-reduced-motion` collapses all of it.
 
-## Implementation
+## Named Rules
 
-The dashboard is a **React 19 SPA** (source in `web/`, built into `public/` with Vite +
-Tailwind CSS v4 for the Node backend to serve unchanged). All components come from
-`@astryxdesign/core` with the `@astryxdesign/theme-neutral` theme, wrapped in
-`<Theme theme={neutralTheme} mode="dark">` in `main.tsx`. The Tailwind entry imports the
-Astryx CSS cascade in layer order (reset → preflight → astryx → theme → utilities) plus
-the `tailwind-theme.css` bridge, so layout uses utilities like `bg-surface`,
-`border-border`, and `text-secondary` backed by theme tokens. Icons are **lucide-react**
-(the Neutral theme's icon family), passed straight to Astryx `icon` props. The only
-hand-written CSS is the page background paint, scrollbars, and the scrollbar-less pill
-row utility. Astryx, React, and the app are split into cached build chunks.
+**The Restraint Rule (upgraded).** If a pixel isn't answering a system state, it is ivory or graphite.
+**The Measurement Register.** Numbers, clocks, codes and flags are mono; prose is Archivo. Never the reverse.
+**The Stamp Rule.** Terminal states are stamped (LIVE / ACTIVE / OFF), not hidden.
+**The Clean-Canvas Rule.** Body paints `--color-background-body` at document level.
 
-## Do's and Don'ts
+## Lineage
 
-### Do:
-- **Do** use Astryx components for every control — never roll your own button, switch,
-  dialog, or badge.
-- **Do** keep the page background painted at the document level so the canvas is always
-  the theme body color.
-- **Do** reserve color for state: green = on, amber = needs setup, red = destructive.
-- **Do** put the primary action in the accent (white) button and everything else in
-  secondary/ghost.
-- **Do** use mono for endpoints, commands, and tool names; tabular numerals in readouts.
-
-### Don't:
-- **Don't** add glass, glow, gradients, or decorative motion — the design is quiet on
-  purpose.
-- **Don't** tint a card or panel to show state; use the semantic badge/switch.
-- **Don't** use red except for destructive actions and errors.
-- **Don't** hard-code colors in components — read the theme tokens through the Tailwind
-  bridge.
-- **Don't** replace destructive confirmations with `window.confirm`.
+Direction: "Flight Dynamics" — mission-control flight-ops walls / NASA 1D status
+boards. Seed 4cb4fbb9 (impeccable concept roll), code-led build per owner
+directive 2026-09-26. Raises absorbed: detent toggles + LED ladders (Tape Deck),
+literal naming + hazard stripes (Quote Grammar), stamped terminal states
+(Ticket Wallet), palette law (Arcade), leader-line annotation (Tensegrity),
+test-strip previews (Darkroom — pending, applies to credential saves).

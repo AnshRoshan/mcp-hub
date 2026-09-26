@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { Badge as AxBadge } from "@astryxdesign/core/Badge";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
@@ -29,7 +28,7 @@ export function ToastBridge() {
   return null;
 }
 
-/* ---------- Badge with the app's semantic tone map ---------- */
+/* ---------- Stamped state flags (Flight Dynamics state law) ---------- */
 
 export function Badge({
   tone = "neutral",
@@ -38,8 +37,9 @@ export function Badge({
   tone?: "ok" | "off" | "warn" | "neutral";
   children: ReactNode;
 }) {
-  const variant = tone === "ok" ? "success" : tone === "warn" ? "warning" : tone === "off" ? "neutral" : "neutral";
-  return <AxBadge variant={variant} label={children} />;
+  const cls =
+    tone === "ok" ? "flag flag-go" : tone === "warn" ? "flag flag-card" : tone === "off" ? "flag flag-off" : "flag";
+  return <span className={cls}>{children}</span>;
 }
 
 export function Tag({
@@ -49,8 +49,10 @@ export function Tag({
   tone?: "http" | "stdio" | "official" | "neutral";
   children: ReactNode;
 }) {
-  const variant = tone === "http" ? "purple" : tone === "stdio" ? "blue" : tone === "official" ? "green" : "neutral";
-  return <AxBadge variant={variant} label={children} />;
+  // Transport/provenance plates: cyan is the telemetry register, green is verified.
+  const cls =
+    tone === "official" ? "flag flag-go" : tone === "http" || tone === "stdio" ? "flag flag-telemetry" : "flag";
+  return <span className={cls}>{children}</span>;
 }
 
 /* ---------- Key/value row ---------- */

@@ -79,7 +79,7 @@ export default function Modules() {
             </Text>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <Switch label="Lite catalog" value={Boolean(me?.liteCatalog)} onChange={toggleLite} />
+            <Switch label="Lite catalog" isLabelHidden value={Boolean(me?.liteCatalog)} onChange={toggleLite} />
           </div>
         </div>
       </div>
@@ -127,7 +127,7 @@ export default function Modules() {
                         </div>
                         <Text type="supporting" size="sm" className="module-card-desc">{meta.desc}</Text>
                       </div>
-                      <Switch label={name} value={enabled} onChange={(v) => toggleModule(name, v)} />
+                      <Switch label={name} isLabelHidden value={enabled} onChange={(v) => toggleModule(name, v)} />
                     </div>
 
                     <div className="module-card-meta">
@@ -150,7 +150,7 @@ export default function Modules() {
                             {tools.map((tool) => (
                               <div key={tool} className="module-card-tool-row">
                                 <code className="module-card-tool-name">{tool}</code>
-                                <Switch label={tool} size="sm" value={!disabledTools.has(tool)} onChange={(v) => toggleTool(tool, v)} />
+                                <Switch label={tool} isLabelHidden size="sm" value={!disabledTools.has(tool)} onChange={(v) => toggleTool(tool, v)} />
                               </div>
                             ))}
                           </div>

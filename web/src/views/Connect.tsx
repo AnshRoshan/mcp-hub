@@ -86,7 +86,7 @@ export default function Connect() {
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex gap-3.5">
-      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full border border-border bg-surface text-xs font-bold text-primary">
+      <span className="telemetry flex h-7 w-7 flex-none items-center justify-center rounded-[4px] border border-border bg-surface text-[11px] font-bold text-primary">
         {n}
       </span>
       <div className="min-w-0 flex-1 text-[13px]">{children}</div>

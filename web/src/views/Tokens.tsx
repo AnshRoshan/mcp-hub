@@ -88,7 +88,8 @@ export default function Tokens() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                   <span className="text-primary">{t.name}</span>
-                  <span className="rounded-full border border-border bg-surface px-2.5 py-0.5 font-mono text-[10.5px] text-secondary">
+                  <span className={`flag ${t.lastUsedAt ? "flag-telemetry" : "flag-go"}`}>{t.lastUsedAt ? "ACTIVE" : "LIVE"}</span>
+                  <span className="telemetry rounded-[3px] border border-border px-2 py-0.5 text-[10.5px] text-secondary">
                     …{t.hint}
                   </span>
                 </div>
