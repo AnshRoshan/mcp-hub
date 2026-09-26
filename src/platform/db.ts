@@ -224,6 +224,17 @@ export class PlatformDb {
     if (!columns("api_tokens").has("expires_at")) {
       this.db.exec("ALTER TABLE api_tokens ADD COLUMN expires_at TEXT");
     }
+
+    // The API's duplicate-key check is read-then-write, so two concurrent
+    // POSTs could store the same key twice and shadow each other's tools.
+    try {
+      this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_servers_user_key ON mcp_servers (user_id, key)");
+    } catch (err) {
+      console.error(
+        `[platform] existing mcp_servers rows share a key, so the unique index was not created: ` +
+          `${err instanceof Error ? err.message : err}. Resolve the duplicates and restart.`,
+      );
+    }
   }
 
   close(): void {

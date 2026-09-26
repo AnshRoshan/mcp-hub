@@ -9,6 +9,7 @@ import { ToolRegistry, registerModule, type ModuleInfo } from "./registry.js";
 import { ToolIndex, aliasesForModule, type ToolSearchHit } from "./toolsearch.js";
 import { lintDescriptions, descriptionScore } from "./descli.js";
 import { UpstreamAggregator, type ProxiedResourceEntry } from "./proxy/aggregator.js";
+import { CALL_TIMEOUT_MS } from "./proxy/upstream.js";
 import type { ToolDef } from "./registry.js";
 import type { PlatformDb } from "./platform/db.js";
 import { rowToConfig, decodeSecrets } from "./platform/serverConfig.js";
@@ -77,7 +78,12 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
    * Per-user aggregators for user-registered servers. stdio children are
    * expensive, so sessions are single-flight, idle-evicted, and LRU-capped.
    */
-  const USER_SESSION_TTL_MS = Math.max(Number(env("USER_SESSION_TTL_MS") ?? ""), 0) || 15 * 60_000;
+  // Floor the idle window above the longest call a session can be inside, so a
+  // short operator-set TTL cannot evict an aggregator mid-tool-call.
+  const USER_SESSION_TTL_MS = Math.max(
+    Math.max(Number(env("USER_SESSION_TTL_MS") ?? ""), 0) || 15 * 60_000,
+    CALL_TIMEOUT_MS * 2,
+  );
   const MAX_USER_SESSIONS = Math.max(Number(env("MAX_USER_SESSIONS") ?? ""), 0) || 50;
 
   interface UserAggSlot {
@@ -392,9 +398,12 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     startHealthChecker({
       reconnect: async (key) => {
         const cfg = config.upstreamServers.find((s) => s.key === key);
-        if (cfg) await aggregator.reconnect(key, cfg);
+        if (!cfg) return;
+        await aggregator.reconnect(key, cfg);
+        // A reconnect can change the tool list, and `shared` is a snapshot.
+        shared = assembleCatalog(defaultPrefs());
       },
-      getServerState: (key) => aggregator.getState(key),
+      probeServer: (key) => aggregator.probe(key, healthCheckerInfo().probeTimeoutMs),
       getConfigs: () => config.upstreamServers,
     });
     // Periodically close idle per-user upstream sessions (stdio children).
@@ -431,7 +440,9 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     if (!slot) return;
     userAggregators.delete(userId);
     // Also covers invalidation while still connecting: close once connect lands.
-    void slot.promise.then((agg) => agg.disconnectAll());
+    slot.promise
+      .then((agg) => agg.disconnectAll())
+      .catch((err: unknown) => console.error(`[mcp-workstation] disconnect during invalidation failed: ${String(err)}`));
   }
 
   /** Close a user's session and drop stdio children. */
@@ -493,6 +504,11 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       lastUsed: Date.now(),
     };
     userAggregators.set(userId, slot);
+    slot.promise.catch(() => {
+      // A rejected connect must not stay cached, or every later request for
+      // this user replays the same failure until the process restarts.
+      if (userAggregators.get(userId) === slot) userAggregators.delete(userId);
+    });
     return slot.promise;
   }
 
@@ -584,6 +600,10 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         throw new Error(`Rate limited: tool "${def.name}" — retry after ${rl.retryAfterMs}ms (limit: ${rl.limit} per window)`);
       }
       const finish = startAudit(corrId, uid, def.name, rawArgs);
+      // Consume the slot now, in the same tick as the check. Recording only
+      // once the handler settled let N concurrent calls all pass the check
+      // against the same pre-increment window.
+      recordRateLimit(uid, def.name);
       const t0 = performance.now();
       const record = (ok: boolean, outBytes: number) => {
         // Usage rollups exist only in platform mode; anonymous single-user calls
@@ -596,7 +616,6 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       };
       return Promise.resolve(def.handler(rawArgs)).then(
         (result: import("@modelcontextprotocol/server").CallToolResult) => {
-          recordRateLimit(uid, def.name);
           const guarded = guardResultSize(result, def.name, corrId);
           const bytes = JSON.stringify(guarded).length;
           finish({ ok: true, outputBytes: bytes });
@@ -604,7 +623,6 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
           return guarded;
         },
         (err: unknown) => {
-          recordRateLimit(uid, def.name);
           finish({ ok: false, outputBytes: 0, error: err instanceof Error ? err.message : String(err) });
           record(false, 0);
           throw err;

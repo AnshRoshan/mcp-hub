@@ -24,9 +24,9 @@ export class UpstreamAggregator {
   /** Connect (or reconnect) all upstream servers from config. Safe to call repeatedly. */
   async connectAll(configs: UpstreamServerConfig[]): Promise<void> {
     await this.disconnectAll();
-    for (const config of configs) {
-      await this.connectOne(config);
-    }
+    // Concurrent: a serial loop meant one unreachable upstream stalled every
+    // server behind it by its full connect timeout. connectOne never rejects.
+    await Promise.all(configs.map((config) => this.connectOne(config)));
   }
 
   /** Instantiate, register, and connect a single upstream; logs the outcome either way. */
@@ -49,9 +49,21 @@ export class UpstreamAggregator {
     await Promise.allSettled(closing);
   }
 
-  /** All proxied tools across all connected servers. */
+  /** Proxied tools across all connected servers, first-wins on a name clash. */
   allTools(): ProxiedTool[] {
-    return this.servers.flatMap((s) => s.tools);
+    const seen = new Set<string>();
+    const out: ProxiedTool[] = [];
+    for (const tool of this.servers.flatMap((s) => s.tools)) {
+      if (seen.has(tool.name)) {
+        // Routing resolves to the first owner (see find()), so advertising a
+        // duplicate would promise a tool no call can ever reach.
+        console.error(`[mcp-workstation] tool name collision, dropping: ${tool.name}`);
+        continue;
+      }
+      seen.add(tool.name);
+      out.push(tool);
+    }
+    return out;
   }
 
   /** All proxied resources across connected servers, first-wins on URI clash. */
@@ -101,10 +113,16 @@ export class UpstreamAggregator {
   }
 
   /** Get the current connection state of a server by key. */
-  getState(key: string): { connected: boolean } | undefined {
-    const s = this.servers.find((s) => s.key === key);
-    if (!s) return undefined;
-    return { connected: s.status.state === "connected" };
+  /** Live check against one upstream; false for unknown, unconnected or dead. */
+  async probe(key: string, timeoutMs: number): Promise<boolean> {
+    const s = this.servers.find((srv) => srv.key === key);
+    if (!s) return false;
+    try {
+      await s.ping(timeoutMs);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   summaries(): UpstreamSummary[] {

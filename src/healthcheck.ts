@@ -27,15 +27,13 @@ interface ServerHealth {
   lastOk: number;
   /** Current backoff in ms (exponential). */
   backoffMs: number;
-  /** Timer handle for the next probe. */
-  timer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface HealthCheckerCallbacks {
   /** Called when a server should be reconnected. */
   reconnect: (key: string) => Promise<void>;
-  /** Called to get the current state of a server. */
-  getServerState: (key: string) => { connected: boolean } | undefined;
+  /** Real liveness check: a transport can look open on a peer that is gone. */
+  probeServer: (key: string) => Promise<boolean>;
   /** Called to get all server configs. */
   getConfigs: () => UpstreamServerConfig[];
 }
@@ -47,7 +45,7 @@ let callbacks: HealthCheckerCallbacks | null = null;
 function getHealth(key: string): ServerHealth {
   let h = healthMap.get(key);
   if (!h) {
-    h = { key, failures: 0, lastProbe: 0, lastOk: 0, backoffMs: 5_000, timer: null };
+    h = { key, failures: 0, lastProbe: 0, lastOk: 0, backoffMs: 5_000 };
     healthMap.set(key, h);
   }
   return h;
@@ -56,20 +54,18 @@ function getHealth(key: string): ServerHealth {
 async function probe(key: string): Promise<void> {
   if (!callbacks) return;
   const h = getHealth(key);
-  const state = callbacks.getServerState(key);
+  h.lastProbe = Date.now();
 
-  if (state?.connected) {
+  if (await callbacks.probeServer(key)) {
     // Server is healthy — reset counters.
     h.failures = 0;
     h.backoffMs = 5_000;
     h.lastOk = Date.now();
-    h.lastProbe = Date.now();
     return;
   }
 
-  // Server is disconnected — attempt reconnect with backoff.
+  // Server is unresponsive — attempt reconnect with backoff.
   h.failures++;
-  h.lastProbe = Date.now();
   h.backoffMs = Math.min(h.backoffMs * 2, maxBackoffMs);
 
   console.error(`[healthcheck] ${key}: reconnecting (attempt ${h.failures}, backoff ${h.backoffMs}ms)`);
@@ -118,9 +114,6 @@ export function stopHealthChecker(): void {
   if (checkerTimer) {
     clearInterval(checkerTimer);
     checkerTimer = null;
-  }
-  for (const h of healthMap.values()) {
-    if (h.timer) clearTimeout(h.timer);
   }
   healthMap.clear();
   callbacks = null;
