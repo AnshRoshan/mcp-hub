@@ -715,12 +715,26 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
             required: ["tool"],
           }),
         },
-        (args) => {
+        async (args) => {
           const a = args as Record<string, unknown>;
           const name = String(a.tool ?? "");
           const def = hidden.get(name);
           if (!def) throw new Error(`Tool "${name}" not in catalog. Run hub_search_tools first.`);
-          return runTool(def, (a.arguments ?? {}) as Record<string, unknown>);
+          const callArgs = (a.arguments ?? {}) as Record<string, unknown>;
+          // Tools registered normally carry a Standard Schema the SDK validates
+          // against before the handler runs. hub_call only declares the outer
+          // {tool, arguments} shape, so without this every minimum/maximum/enum
+          // on a hidden tool would be unenforced on the search-first path.
+          const standard = toStandardSchema(def.inputSchema);
+          if (standard === undefined) return runTool(def, callArgs);
+          const outcome = await standard["~standard"].validate(callArgs);
+          if (outcome.issues !== undefined) {
+            const detail = outcome.issues
+              .map((i) => `${i.path === undefined ? "" : i.path.join(".")} ${i.message}`.trim())
+              .join("; ");
+            throw new Error(`Invalid arguments for "${name}": ${detail}`);
+          }
+          return runTool(def, (outcome.value ?? callArgs) as Record<string, unknown>);
         },
       );
     }

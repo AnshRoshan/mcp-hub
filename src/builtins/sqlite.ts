@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
-import { assertReadOnly, env, envBool, str, strArr } from "../utils.js";
+import { assertReadOnly, env, envBool, SQL_WRITE_RE, stripSqlComments, str, strArr } from "../utils.js";
 
 const allowWrite = envBool("SQLITE_ALLOW_WRITE", false);
 const SQLITE_PATH = env("SQLITE_PATH")
@@ -17,13 +17,18 @@ try {
   // node:sqlite ships with Node.js >= 22.5 (unflagged from 23.4).
   const { DatabaseSync } = await import("node:sqlite");
   fs.mkdirSync(path.dirname(SQLITE_PATH), { recursive: true });
-  db = new DatabaseSync(SQLITE_PATH) as unknown as typeof db;
+  if (!allowWrite && !fs.existsSync(SQLITE_PATH)) {
+    // A read-only handle cannot create its file, so bootstrap an empty database
+    // once and reopen it under the read-only flag.
+    new DatabaseSync(SQLITE_PATH).close();
+  }
+  // Engine-level enforcement: the statement filter below only shapes the error
+  // message, so a novel write syntax cannot slip past it and mutate the file.
+  db = new DatabaseSync(SQLITE_PATH, allowWrite ? {} : { readOnly: true }) as unknown as typeof db;
 } catch (err) {
   available = false;
   openError = err instanceof Error ? err.message : String(err);
 }
-
-const WRITE_RE = /^\s*(insert|update|delete|drop|alter|create|truncate|attach|detach|reindex|vacuum|pragma\s+\w+\s*=\s*[^;]+)/i;
 
 function paramsOf(args: Record<string, unknown>): unknown[] {
   if (args.params === undefined || args.params === null) return [];
@@ -33,7 +38,7 @@ function paramsOf(args: Record<string, unknown>): unknown[] {
 
 function runSql(sql: string, params: unknown[]): unknown {
   const stmt = db!.prepare(sql);
-  if (/^\s*(select|pragma|explain|with)\b/i.test(sql)) {
+  if (/^\s*(select|pragma|explain|with)\b/i.test(stripSqlComments(sql))) {
     return stmt.all(...params);
   }
   const res = stmt.run(...params);
@@ -63,7 +68,7 @@ export const sqliteDefs: ToolDef[] = [
     },
     handler: (args) => {
       const sql = str(args.sql);
-      assertReadOnly(sql, { allowWrite, writeRe: WRITE_RE, dbName: "SQLite", envVar: "SQLITE_ALLOW_WRITE" });
+      assertReadOnly(sql, { allowWrite, writeRe: SQL_WRITE_RE, dbName: "SQLite", envVar: "SQLITE_ALLOW_WRITE" });
       return jsonResult(runSql(sql, paramsOf(args)));
     },
   },
