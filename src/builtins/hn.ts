@@ -140,14 +140,20 @@ export const hnDefs: ToolDef[] = [
       const limit = num(args.limit, 10);
       const tags = sort === "date" ? "search_by_date" : "search";
       const filters: string[] = [];
-      if (sort === "points") filters.push("points>0");
       if (args.points_min !== undefined) filters.push(`points>=${num(args.points_min, 0)}`);
+      // The Algolia index has no points ordering, so widen the candidate set and
+      // rank it here — otherwise `sort: points` silently returns relevance order.
+      const hitsPerPage = sort === "points" ? Math.min(Math.max(limit * 10, 100), 1000) : limit;
       const url =
-        `${ALGOLIA}/${tags}?query=${encodeURIComponent(query)}&hitsPerPage=${limit}&tags=story` +
+        `${ALGOLIA}/${tags}?query=${encodeURIComponent(query)}&hitsPerPage=${hitsPerPage}&tags=story` +
         (filters.length > 0 ? `&numericFilters=${encodeURIComponent(filters.join(","))}` : "");
-      const data = (await getJson(url)) as { hits?: unknown[] };
+      const data = (await getJson(url)) as { hits?: Record<string, unknown>[] };
+      let hits = data.hits ?? [];
+      if (sort === "points") {
+        hits = [...hits].sort((a, b) => Number(b.points ?? 0) - Number(a.points ?? 0)).slice(0, limit);
+      }
       return jsonResult({
-        hits: (data.hits ?? []).map((h) => {
+        hits: hits.map((h) => {
           const hit = h as Record<string, unknown>;
           return {
             title: hit.title,
