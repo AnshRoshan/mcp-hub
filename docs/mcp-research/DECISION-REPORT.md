@@ -93,7 +93,7 @@ All repo stats re-verified today from api.github.com (**V** unless noted).
 
 **S3 — Registry + Apps visibility.** ✅ shipped 2026-09-25
 - ✅ Directory live-searches the official registry (`GET /api/registry` proxy, session-gated, https-only flattening) with one-click "add as upstream" — E2E-verified against the real registry.
-- ✅ Publish-ready `registry/server.json` (`io.github.anshace/mcp-workstation`), validated offline against the vendored official schema (`npm run validate:registry`, in `check`). Submission needs a deployed public URL + namespace claim — operator step.
+- ✅ Publish-ready `registry/server.json` (`io.github.anshroshan/mcp-workstation`), validated offline against the vendored official schema (`npm run validate:registry`, in `check`). Submission needs a deployed public URL + namespace claim — operator step.
 - ✅ MCP Apps: upstream `_meta` + title pass-through AND **resources proxy** (`resources/list`/`read` with verbatim URIs, collision-safe, capability advertised only when present) — the protocol surface app-capable clients (Claude/ChatGPT) need to render `ui://` tool UIs through the hub, E2E-proven with a `ui://demo/echo` fixture.
 - Deferred with reason: Cursor documents no install-deeplink format (verified against cursor.com/docs/mcp — not invented); in-dashboard `ui://` rendering would require embedding an MCP client in the dashboard; clients do this natively via the proxied resources.
 
