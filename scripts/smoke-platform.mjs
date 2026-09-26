@@ -14,6 +14,8 @@
  *  - per-user builtin credentials (own GitHub token enables github for THEM only)
  *  - the lite (search-first) catalog: Tier-0 list + hub_search/get/call round trip
  *  - a second user cannot see the first user's servers
+ *  - a second user cannot read the first user's memory, workspace files,
+ *    knowledge base, or spilled tool results (per-user storage scope)
  */
 import { randomBytes, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -24,7 +26,11 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 4165;
 const BASE = `http://localhost:${PORT}`;
-const DB = path.join(ROOT, "data", "smoke-platform.db");
+// A dedicated data directory: platform mode puts each account's storage in
+// `<dir of PLATFORM_DB>/users/<id>/`, so the per-user trees land here too and
+// can be thrown away with the database.
+const SMOKE_DATA = path.join(ROOT, "data", "smoke-platform");
+const DB = path.join(SMOKE_DATA, "platform.db");
 const DB_WAL = `${DB}-wal`;
 const DB_SHM = `${DB}-shm`;
 
@@ -44,6 +50,11 @@ async function main() {
       fs.rmSync(f, { force: true });
     } catch {}
   }
+  // Yesterday's run left per-user directories behind; start from empty so the
+  // storage-isolation checks below can only pass for the right reason.
+  try {
+    fs.rmSync(SMOKE_DATA, { recursive: true, force: true });
+  } catch {}
   if (!fs.existsSync(TEST_SERVER)) {
     console.error(`Missing ${TEST_SERVER} — run npm run build first.`);
     process.exit(1);
@@ -483,6 +494,67 @@ async function main() {
     const ghBob = ghModule(await statusOf(bobToken));
     check("Bob's github stays off (secrets are per-user)", ghBob?.enabled === false);
     check("Alice's token never leaks into Bob's status", !JSON.stringify(await statusOf(bobToken)).includes("ghp_alice_private"));
+
+    // ---- per-user STORAGE isolation ----
+    // Stateful builtins (memory / filesystem / knowledge / sqlite) and the
+    // oversized-result spill directory must be bound to the requesting user,
+    // not to one process-global path. Re-enable Alice's memory module first
+    // (an earlier section turned it off on purpose).
+    console.log("== per-user storage isolation ==");
+    await api("/api/prefs", { cookie, method: "PUT", body: { disabledModules: [] } });
+    await sleep(300);
+
+    const iso = `iso-${Date.now()}`;
+    await mcpCall(token, "memory_set", { key: "alice_marker", value: iso });
+    await mcpCall(token, "fs_write", { path: "alice-only.txt", content: iso });
+    await mcpCall(token, "knowledge_index", { text: `Alice keeps ${iso} alpacas in the attic`, title: "alice-notes" });
+
+    const stAlice = await statusOf(token);
+    const stBob = await statusOf(bobToken);
+    const rootsA = (stAlice?.filesystemRoots ?? []).join(",");
+    const rootsB = (stBob?.filesystemRoots ?? []).join(",");
+    check("each user's sandbox roots are their own directory",
+      rootsA !== rootsB && rootsA.includes("users") && rootsB.includes("users"), `${rootsA} vs ${rootsB}`);
+
+    const bobMemGet = await mcpCall(bobToken, "memory_get", { key: "alice_marker" });
+    const bobMemList = await mcpCall(bobToken, "memory_list", {});
+    const bobMemSearch = await mcpCall(bobToken, "memory_search", { query: iso });
+    const bobText = (r) => JSON.stringify(r?.content ?? "");
+    check("Bob cannot read Alice's memory entry", !bobText(bobMemGet).includes(iso), bobText(bobMemGet).slice(0, 60));
+    check("Alice's key is absent from Bob's memory list", !bobText(bobMemList).includes("alice_marker"));
+    check("Bob's memory search finds nothing of Alice's", !bobText(bobMemSearch).includes(iso));
+    check("Alice's own memory still reads back", bobText(await mcpCall(token, "memory_get", { key: "alice_marker" })).includes(iso));
+
+    const bobRead = await mcpCall(bobToken, "fs_read", { path: "alice-only.txt" });
+    const bobList = await mcpCall(bobToken, "fs_list", {});
+    // fs_search echoes the pattern in its result, so assert on the match count.
+    const bobGrep = JSON.parse((await mcpCall(bobToken, "fs_search", { pattern: iso }))?.content?.[0]?.text ?? "{}");
+    check("Bob cannot read Alice's workspace file", !bobText(bobRead).includes(iso), bobText(bobRead).slice(0, 80));
+    check("Alice's file is absent from Bob's directory listing", !bobText(bobList).includes("alice-only.txt"));
+    check("Bob's recursive grep cannot reach Alice's files", bobGrep.count === 0, JSON.stringify(bobGrep).slice(0, 80));
+
+    const bobKb = await mcpCall(bobToken, "knowledge_fts_search", { query: "alpacas" });
+    const aliceKb = await mcpCall(token, "knowledge_fts_search", { query: "alpacas" });
+    check("Bob's knowledge base does not contain Alice's document", !bobText(bobKb).includes(iso) && !bobText(bobKb).includes("alice-notes"));
+    check("Alice's knowledge base still has her document", bobText(aliceKb).includes("alice-notes"));
+    const kbAlice = JSON.parse((await mcpCall(token, "knowledge_status", {}))?.content?.[0]?.text ?? "{}");
+    const kbBob = JSON.parse((await mcpCall(bobToken, "knowledge_status", {}))?.content?.[0]?.text ?? "{}");
+    check("knowledge databases are per user",
+      Boolean(kbAlice.db) && kbAlice.db !== kbBob.db && kbAlice.db.includes("users") && kbBob.db.includes("users"),
+      `${kbAlice.db} vs ${kbBob.db}`);
+
+    // A spill written for one user must not be readable by another.
+    const spillDir = (p) => (typeof p === "string" ? path.dirname(p) : "");
+    const aliceSpill = big?.structuredContent?.path;
+    const stealSpill = await mcpCall(bobToken, "fs_read", { path: aliceSpill ?? "results/none.json" });
+    check("Alice's spilled result is unreadable through Bob's tools",
+      typeof aliceSpill === "string" && !bobText(stealSpill).includes("xxxxx"), bobText(stealSpill).slice(0, 80));
+    await mcpCall(bobToken, "fs_write", { path: "big.txt", content: "y".repeat(9000) });
+    const bobSpill = await mcpCall(bobToken, "fs_read", { path: "big.txt" });
+    check("Bob's oversized result spills inside Bob's own sandbox",
+      bobSpill?.structuredContent?.spilled === true && spillDir(bobSpill?.structuredContent?.path) === path.join(rootsB, "results"),
+      bobSpill?.structuredContent?.path ?? "no spill");
+    check("the two users' spill directories are distinct", spillDir(aliceSpill) !== spillDir(bobSpill?.structuredContent?.path));
 
     console.log(failures === 0 ? "\nPLATFORM SMOKE PASSED" : `\n${failures} CHECK(S) FAILED`);
     process.exitCode = failures === 0 ? 0 : 1;

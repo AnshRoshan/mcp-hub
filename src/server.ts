@@ -22,13 +22,13 @@ import { timeDefs } from "./builtins/time.js";
 import { uuidDefs } from "./builtins/uuid.js";
 import { fetchDefs } from "./builtins/fetch.js";
 import { memoryDefs } from "./builtins/memory.js";
-import { filesystemDefs, filesystemRoots } from "./builtins/filesystem.js";
-import { knowledgeDefs, knowledgeEnabled } from "./builtins/knowledge.js";
+import { filesystemDefs } from "./builtins/filesystem.js";
+import { knowledgeModule } from "./builtins/knowledge.js";
 import { githubModule } from "./builtins/github.js";
 import { jiraModule } from "./builtins/jira.js";
 import { searchModule } from "./builtins/search.js";
 import { postgresDefs, postgresEnabled } from "./builtins/postgres.js";
-import { sqliteDefs, sqliteEnabled } from "./builtins/sqlite.js";
+import { sqliteModule } from "./builtins/sqlite.js";
 import { notionModule } from "./builtins/notion.js";
 import { slackModule } from "./builtins/slack.js";
 import { cryptoDefs } from "./builtins/crypto.js";
@@ -36,6 +36,7 @@ import { hnDefs } from "./builtins/hn.js";
 import { weatherDefs } from "./builtins/weather.js";
 import { devkitDefs } from "./builtins/devkit.js";
 import { youtubeDefs } from "./builtins/youtube.js";
+import { defaultScope, userScope, type StorageScope } from "./scope.js";
 
 const VERSION = "0.2.0";
 
@@ -113,6 +114,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     /** Upstream resources (incl. MCP Apps `ui://`), URIs verbatim. */
     resources: ProxiedResourceEntry[];
     status: unknown;
+    /** Where this catalog's stateful builtins store data (also the spill dir). */
+    scope: StorageScope;
   }
 
   interface CatalogPrefs {
@@ -121,6 +124,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     skills: Set<string>;
     /** Where credential-gated builtin modules read their config from. */
     env: EnvSource;
+    /** Server-assigned storage root for the stateful builtin modules. */
+    scope: StorageScope;
     /** Search-first exposure: only Tier-0 tools listed, rest behind hub tools. */
     lite: boolean;
   }
@@ -128,8 +133,16 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
   /** Tools always visible in lite mode (plus the three hub meta-tools). */
   const LITE_TIER0 = new Set(["workstation_status", "workstation_reload"]);
 
+  /**
+   * Per-account storage lives under the platform database's directory as
+   * `<data>/users/<userId>/` (see `scope.ts`); single-user mode keeps the
+   * env-driven paths it has always used.
+   */
+  const userStorageScope = (db: PlatformDb, userId: string): StorageScope =>
+    userScope(path.dirname(db.filePath), userId);
+
   /** The shared catalog — what the dashboard and `workstation_status` (no user) report. */
-  let shared: Catalog = { tools: [], hidden: null, index: null, resources: [], status: null };
+  let shared: Catalog = { tools: [], hidden: null, index: null, resources: [], status: null, scope: defaultScope() };
 
   interface BuiltinModule {
     name: string;
@@ -137,7 +150,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     /**
      * Produce this module's tools + enabled state for one catalog. Most
      * modules ignore `prefs` (constant defs); credential-gated ones build
-     * clients from `prefs.env`, so each user's tools carry THEIR tokens.
+     * clients from `prefs.env`, and stateful ones bind to `prefs.scope`, so
+     * each user's tools carry THEIR tokens and read/write THEIR files.
      */
     forPrefs: (prefs: CatalogPrefs) => { defs: ToolDef[]; enabled: boolean; reason?: string };
   }
@@ -166,18 +180,31 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     builtinModules.push({ name, category, forPrefs: (prefs) => build(prefs.env) });
   }
 
+  /**
+   * Register a module that keeps state on disk. It is built per catalog from
+   * the server-assigned scope, so a tenant's tools can only ever reach that
+   * tenant's own files and databases.
+   */
+  function defineScopedModule(
+    name: string,
+    category: string,
+    build: (scope: StorageScope) => { defs: ToolDef[]; enabled: boolean; reason?: string },
+  ): void {
+    builtinModules.push({ name, category, forPrefs: (prefs) => build(prefs.scope) });
+  }
+
   function registerBuiltins(): void {
     defineModule("time", "Utilities", timeDefs, true);
     defineModule("uuid", "Utilities", uuidDefs, true);
     defineModule("fetch", "Web & API", fetchDefs, true);
-    defineModule("memory", "Knowledge & Memory", memoryDefs, true);
-    defineModule("filesystem", "Files & Data", filesystemDefs, true);
-    defineModule("knowledge", "Knowledge & Memory", knowledgeDefs, knowledgeEnabled.enabled);
+    defineScopedModule("memory", "Knowledge & Memory", (scope) => ({ defs: memoryDefs(scope), enabled: true }));
+    defineScopedModule("filesystem", "Files & Data", (scope) => ({ defs: filesystemDefs(scope), enabled: true }));
+    defineScopedModule("knowledge", "Knowledge & Memory", knowledgeModule);
     defineEnvModule("github", "Development", githubModule);
     defineEnvModule("jira", "Productivity", jiraModule);
     defineEnvModule("search", "Web & API", searchModule);
     defineModule("postgres", "Files & Data", postgresDefs, postgresEnabled.enabled, postgresEnabled.enabled ? undefined : postgresEnabled.reason);
-    defineModule("sqlite", "Files & Data", sqliteDefs, sqliteEnabled.enabled, sqliteEnabled.enabled ? undefined : sqliteEnabled.reason);
+    defineScopedModule("sqlite", "Files & Data", sqliteModule);
     defineEnvModule("notion", "Productivity", notionModule);
     defineEnvModule("slack", "Communication", slackModule);
     defineModule("crypto", "Finance & Crypto", cryptoDefs, true);
@@ -371,7 +398,7 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       userUpstreams: userAgg ? userAgg.summaries() : [],
       totalTools: all.length,
       descriptionQuality: { score: descriptionScore(all, smells), flagged: smells.slice(0, 10) },
-      filesystemRoots,
+      filesystemRoots: prefs.scope.filesystemRoots,
       disabledModules: [...prefs.modules],
       disabledTools: [...prefs.tools],
       enabledSkills: [...prefs.skills],
@@ -381,14 +408,14 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     };
 
     if (!prefs.lite) {
-      return { tools: all, hidden: null, index: null, resources, status };
+      return { tools: all, hidden: null, index: null, resources, status, scope: prefs.scope };
     }
     // Lite: only Tier-0 meta + hub tools are listed; the rest stay callable via hub.
     const index = new ToolIndex(all.filter((d) => !LITE_TIER0.has(d.name)), aliases);
     const tools = all.filter((d) => LITE_TIER0.has(d.name));
     // hidden excludes the Tier-0 already-listed tools (they're directly callable).
     for (const name of LITE_TIER0) hiddenMap.delete(name);
-    return { tools, hidden: hiddenMap, index, resources, status };
+    return { tools, hidden: hiddenMap, index, resources, status, scope: prefs.scope };
   }
 
   /** The catalog for a platform-mode request (their prefs + their upstreams). */
@@ -521,7 +548,14 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
 
   /** The single-user / shared defaults: everything on, server-owned env, full catalog. */
   function defaultPrefs(): CatalogPrefs {
-    return { modules: new Set(), tools: new Set(), skills: allSkillNames(skillCatalog), env: processEnv, lite: false };
+    return {
+      modules: new Set(),
+      tools: new Set(),
+      skills: allSkillNames(skillCatalog),
+      env: processEnv,
+      scope: defaultScope(),
+      lite: false,
+    };
   }
 
   /** Disabled builtin modules / tools, enabled skills, credentials, and catalog mode for a user. */
@@ -539,6 +573,11 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       // "*" (the DB default) means untouched → every skill on. Explicit lists respected.
       skills: prefsRow ? (stored.has("*") ? allSkillNames(skillCatalog) : stored) : allSkillNames(skillCatalog),
       env: layeredEnv(secrets, processEnv),
+      // Storage is keyed off the authenticated id, never off anything the
+      // caller sends, so one tenant cannot aim their tools at another's files.
+      // Deleting an account is NOT mirrored on disk — wiping tenant data
+      // automatically would be destructive.
+      scope: userStorageScope(platform.db, userId),
       // New users default to the token-frugal lite catalog; existing rows keep their setting.
       lite: prefsRow ? prefsRow.liteCatalog === 1 : true,
     };
@@ -557,15 +596,22 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
   const CONTROL_PLANE_TOOL = /^(workstation_|hub_)/;
 
   /**
-   * Spill oversized results into the workspace so the agent's context stays
-   * small and the full data stays reachable (fs_read / knowledge tools).
+   * Spill oversized results into the caller's own workspace so the agent's
+   * context stays small and the full data stays reachable (fs_read / knowledge
+   * tools) — and so no other tenant can list or read it back out of a
+   * shared directory.
    */
-  function guardResultSize(result: import("@modelcontextprotocol/server").CallToolResult, tool: string, corrId: string) {
+  function guardResultSize(
+    result: import("@modelcontextprotocol/server").CallToolResult,
+    tool: string,
+    corrId: string,
+    scope: StorageScope,
+  ) {
     if (!MAX_RESULT_BYTES || CONTROL_PLANE_TOOL.test(tool)) return result;
     const text = JSON.stringify(result);
     if (text.length <= MAX_RESULT_BYTES) return result;
     try {
-      const dir = path.join(config.filesystemRoots[0] ?? path.resolve(process.cwd(), "data"), "results");
+      const dir = scope.resultsDir;
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${corrId}.json`);
       fs.writeFileSync(file, text);
@@ -623,7 +669,7 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       };
       return Promise.resolve(def.handler(rawArgs)).then(
         (result: import("@modelcontextprotocol/server").CallToolResult) => {
-          const guarded = guardResultSize(result, def.name, corrId);
+          const guarded = guardResultSize(result, def.name, corrId, catalog.scope);
           const bytes = JSON.stringify(guarded).length;
           finish({ ok: true, outputBytes: bytes });
           record(true, bytes);
