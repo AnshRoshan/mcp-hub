@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodeSecrets, encodeSecrets, rowToConfig } from "../src/platform/serverConfig.js";
+import { decodeSecrets, encodeSecrets, encryptStringMap, rowToConfig, serverDto } from "../src/platform/serverConfig.js";
 import { encryptSecret } from "../src/platform/crypto.js";
 import type { McpServerRow } from "../src/platform/db.js";
 
@@ -66,4 +66,32 @@ test("rowToConfig decrypts env/headers and maps stdio vs http", () => {
     url: "https://example.com/mcp",
     headers: { Authorization: "Bearer x" },
   });
+});
+
+const serverRow = (over: Partial<McpServerRow>): McpServerRow =>
+  ({
+    id: "r1",
+    userId: "u1",
+    key: "srv",
+    type: "http",
+    url: "https://example.invalid/mcp",
+    enabled: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...over,
+  }) as McpServerRow;
+
+test("serverDto reports unreadable credentials instead of throwing", () => {
+  const enc = encryptStringMap({ API_KEY: "value-not-returned" }, SECRET);
+
+  const healthy = serverDto(serverRow({ envEnc: enc }), SECRET) as Record<string, unknown>;
+  assert.deepEqual(healthy.envKeys, ["API_KEY"]);
+  assert.equal(healthy.secretsUnreadable, false);
+  assert.ok(!JSON.stringify(healthy).includes("value-not-returned"), "values must never leave the server");
+
+  // The same row after a BETTER_AUTH_SECRET rotation. This used to throw, which
+  // turned GET /api/servers into a 500 and hid every server the user owns.
+  const rotated = serverDto(serverRow({ envEnc: enc }), SECRET_OTHER) as Record<string, unknown>;
+  assert.deepEqual(rotated.envKeys, []);
+  assert.equal(rotated.hasEnv, true, "a credential is still stored there");
+  assert.equal(rotated.secretsUnreadable, true);
 });
