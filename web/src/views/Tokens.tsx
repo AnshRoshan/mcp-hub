@@ -1,13 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { copyText, createToken, errMsg, loadTokens, revokeToken } from "../lib/api";
 import { useStore } from "../lib/store";
-import { CopyBtn, Empty, useConfirm } from "../components/ui";
+import { Btn, CopyBtn, Empty, useConfirm } from "../components/ui";
 
 export default function Tokens() {
   const { tokens, setTokens, toast } = useStore();
@@ -54,29 +52,29 @@ export default function Tokens() {
             Authenticate MCP clients. Pass as a Bearer token on every request to <code>/mcp</code>.
           </Text>
         </div>
-        <Button label="Create token" variant="primary" icon={<Plus size={15} strokeWidth={2.4} />} onClick={() => { setCreating(true); setNewToken(null); }} />
+        <Btn variant="primary" icon={<Plus size={13} strokeWidth={2.4} />} onClick={() => { setCreating(true); setNewToken(null); }}>Create token</Btn>
       </div>
 
       {creating && (
-        <Card padding={5}>
+        <section className="panel">
           <Heading level={4}>New token</Heading>
           <form onSubmit={create} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <TextInput label="Name" placeholder="Claude Code" value={name} onChange={setName} />
             </div>
-            <Button label="Create" variant="primary" type="submit" />
+            <Btn variant="primary" type="submit">Create</Btn>
           </form>
-        </Card>
+        </section>
       )}
 
       {newToken && (
-        <Card padding={5} variant="green">
+        <section className="panel panel-success">
           <Heading level={4}>Copy this token — it won't be shown again</Heading>
           <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <code className="block flex-1 break-all rounded-md border border-border bg-surface p-3 font-mono text-sm text-primary">{newToken}</code>
-            <Button label="Copy" variant="primary" icon={<KeyRound size={15} />} onClick={async () => { await copyText(newToken); toast("Token copied"); }} />
+            <code className="block flex-1 break-all rounded-[4px] border border-border bg-background-body p-3 font-mono text-sm text-primary">{newToken}</code>
+            <Btn variant="primary" icon={<KeyRound size={13} />} onClick={async () => { await copyText(newToken); toast("Token copied"); }}>Copy</Btn>
           </div>
-        </Card>
+        </section>
       )}
 
       {tokens.length === 0 ? (
@@ -109,7 +107,7 @@ export default function Tokens() {
               </div>
               <div className="flex flex-none flex-wrap gap-2">
                 <CopyBtn text={`Authorization: Bearer …${t.hint}`} label="Copy auth header" />
-                <Button label="Revoke" variant="ghost" size="sm" icon={<Trash2 size={13} />} className="!text-red-vivid hover:!border-red-ring" onClick={() => revoke(t.id, t.name)} />
+                <Btn variant="danger" icon={<Trash2 size={12} />} onClick={() => revoke(t.id, t.name)}>Revoke</Btn>
               </div>
             </div>
           ))}

@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Check, Trash2 } from "lucide-react";
 import { deleteSecret, errMsg, loadSecrets, putSecret, type SecretSpec, type SecretsData } from "../lib/api";
 import { useStore } from "../lib/store";
-import { Badge, Empty, useConfirm } from "../components/ui";
+import { Badge, Btn, Empty, useConfirm } from "../components/ui";
 
 export default function Credentials() {
   const { toast, refreshMe } = useStore();
@@ -108,22 +107,17 @@ export default function Credentials() {
                           onChange={(v) => setDrafts((d) => ({ ...d, [spec.name]: v }))}
                         />
                       </div>
-                      <Button
-                        label="Save"
+                      <Btn
                         variant="primary"
-                        size="sm"
-                        isDisabled={!(drafts[spec.name] ?? "").trim() || saving === spec.name}
+                        disabled={!(drafts[spec.name] ?? "").trim() || saving === spec.name}
                         onClick={() => save(spec.name)}
-                      />
+                      >
+                        {saving === spec.name ? "Saving…" : "Save"}
+                      </Btn>
                       {isSet && (
-                        <Button
-                          label="Remove"
-                          variant="ghost"
-                          size="sm"
-                          icon={<Trash2 size={13} />}
-                          className="!text-red-vivid hover:!border-red-ring"
-                          onClick={() => remove(spec.name)}
-                        />
+                        <Btn variant="danger" icon={<Trash2 size={12} />} onClick={() => remove(spec.name)}>
+                          Remove
+                        </Btn>
                       )}
                     </div>
                   </div>

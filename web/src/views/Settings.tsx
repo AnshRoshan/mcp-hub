@@ -1,12 +1,10 @@
 import { Avatar } from "@astryxdesign/core/Avatar";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { Cable, KeyRound, LogOut } from "lucide-react";
 import { signOut } from "../lib/api";
 import { mcpEndpoint } from "../lib/config";
 import { useStore } from "../lib/store";
-import { Kv, KvList } from "../components/ui";
+import { Btn, Kv, KvList } from "../components/ui";
 
 export default function Settings() {
   const { user, status, navigate } = useStore();
@@ -21,7 +19,7 @@ export default function Settings() {
         </Text>
       </div>
 
-      <Card padding={5}>
+      <section className="panel">
         <Heading level={4}>Profile</Heading>
         <div className="mt-3 flex items-center gap-4">
           <Avatar src={user?.image || undefined} name={user?.name || "Account"} size="lg" />
@@ -30,9 +28,9 @@ export default function Settings() {
             <Text type="supporting" size="sm" className="mt-0.5 truncate">{user?.email || "—"}</Text>
           </div>
         </div>
-      </Card>
+      </section>
 
-      <Card padding={5}>
+      <section className="panel">
         <Heading level={4}>Connection</Heading>
         <div className="mt-2">
           <KvList>
@@ -41,12 +39,12 @@ export default function Settings() {
           </KvList>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button label="Create token" variant="secondary" icon={<KeyRound size={14} />} onClick={() => navigate("tokens")} />
-          <Button label="Connect guide" variant="secondary" icon={<Cable size={14} />} onClick={() => navigate("connect")} />
+          <Btn variant="plate" icon={<KeyRound size={13} />} onClick={() => navigate("tokens")}>Create token</Btn>
+          <Btn variant="plate" icon={<Cable size={13} />} onClick={() => navigate("connect")}>Connect guide</Btn>
         </div>
-      </Card>
+      </section>
 
-      <Card padding={5}>
+      <section className="panel">
         <Heading level={4}>About</Heading>
         <div className="mt-2">
           <KvList>
@@ -55,15 +53,15 @@ export default function Settings() {
             <Kv k="Node" v={s.node || "—"} mono />
           </KvList>
         </div>
-      </Card>
+      </section>
 
-      <Card padding={5} variant="red">
+      <section className="panel panel-danger">
         <Heading level={4}>Account</Heading>
         <Text type="supporting" size="sm" className="mt-1">
           Sign out ends this session. API tokens keep working until revoked.
         </Text>
-        <Button label="Sign out" variant="destructive" className="mt-3" icon={<LogOut size={15} />} onClick={() => signOut()} />
-      </Card>
+        <Btn variant="danger" className="mt-3 self-start" icon={<LogOut size={13} />} onClick={() => signOut()}>Sign out</Btn>
+      </section>
     </div>
   );
 }

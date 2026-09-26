@@ -101,14 +101,20 @@ views with Tailwind steps; radius scale: 1 / 3 / 4 / 6px only.
 
 ## Components
 
+- **Mission rail (`.fd-rail`)** — hand-built flight-ops navigation replacing Astryx AppShell/SideNav entirely: bolt-plate wordmark + `FLIGHT OPS · V0.1` caption, mono section headings with hairline rules, nav items with a 2px telemetry detent bar when active, and an UPLINK block (LED + endpoint + open button) over the account plate in the footer. On ≤900px it becomes an off-canvas drawer behind a hamburger plate with scrim.
+- **Flight strip** — the dashboard's first band: the live endpoint with uplink LED, copy, and the CONNECT A CLIENT plate. The overview's story starts with the mechanism.
+- **Machined controls (`.btn`, `.fd-switch`, `.tab-plate`)** — engraved-caps uppercase buttons in four variants (primary plate, surface plate, telemetry link, abort danger); square detent switches (4px track, 1px knob, GO-green when on); detent tab plates with a top telemetry bar on the active one. Astryx Button/Switch/TabList/Card are not used in-app.
+- **Panels (`.panel`)** — the world's own container (6px, hairline seam, card field); `.panel-success` / `.panel-danger` tint the seam with state color.
+- **Cold-instrument empty state (`.cold-instrument`)** — dashed hairline frame, `NO SIGNAL` stamp, title, copy. Loading uses layout-shaped `.skeleton` sweeps.
 - **Flags (`.flag`)** — mono uppercase stamps: `GO / CAUTION / CARD / NO-GO / OFF / LIVE / ACTIVE`, tinted ground + border; replaces pill badges.
 - **Telemetry tiles** — engraved label, 34px mono value, 12-segment LED ladder (`--led-color` per state); power-on sweep is the one authored motion.
 - **Leader-notes** — hover/focus annotations pinned by a hairline to their row.
 - **Uplink LED** — breathing green dot = endpoint linked; static red = down.
-- **Pre-flight steps** — square number plates that stamp GO-green when done.
+- **Pre-flight steps** — square number plates that stamp GO-green when done, with an `n / 3 COMPLETE` progress stamp on the panel.
 - **DAY/NIGHT plate** — machined selector in the mission strip switching the register.
-- Astryx components remain the control substrate (AppShell, SideNav, Switch,
-  Dialog, TextInput…), re-tuned through `--color-*` token overrides only.
+- Astryx remains substrate only for overlays and composites (DropdownMenu, Dialog,
+  Tooltip, Toast, TextInput/TextArea, CodeBlock, Avatar, MetadataList),
+  re-tuned through `--color-*` token overrides.
 
 ## Motion
 

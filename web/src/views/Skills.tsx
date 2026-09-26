@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { CodeBlock } from "@astryxdesign/core/CodeBlock";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Switch } from "@astryxdesign/core/Switch";
 import { Eye } from "lucide-react";
 import { errMsg, putSkills } from "../lib/api";
 import { useStore } from "../lib/store";
-import { Badge } from "../components/ui";
+import { Badge, Btn, FdSwitch } from "../components/ui";
 import { CategoryIcon } from "../components/icons";
 
 export default function Skills() {
@@ -61,11 +59,11 @@ export default function Skills() {
                   <div className="skill-card-header">
                     <div className="skill-card-name">
                       <Text weight="semibold" size="sm">{skill.name}</Text>
-                      <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-mono text-tertiary">
+                      <span className="telemetry rounded-[3px] border border-border px-1.5 py-0.5 text-[10px] text-tertiary">
                         v{skill.version}
                       </span>
                     </div>
-                    <Switch label={skill.name} value={skill.enabled} onChange={(v) => toggle(skill.name, v)} />
+                    <FdSwitch label={skill.name} checked={skill.enabled} onChange={(v) => toggle(skill.name, v)} />
                   </div>
 
                   <Text type="supporting" size="sm" className="skill-card-desc">
@@ -74,13 +72,9 @@ export default function Skills() {
 
                   <div className="skill-card-footer">
                     {skill.content ? (
-                      <Button
-                        label="Preview"
-                        variant="ghost"
-                        size="sm"
-                        icon={<Eye size={13} />}
-                        onClick={() => setPreview(skill.name)}
-                      />
+                      <Btn variant="link" icon={<Eye size={12} />} onClick={() => setPreview(skill.name)}>
+                        Preview
+                      </Btn>
                     ) : (
                       <span />
                     )}

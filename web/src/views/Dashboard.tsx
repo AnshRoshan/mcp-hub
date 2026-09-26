@@ -1,10 +1,9 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Cable } from "lucide-react";
 import { MODULES } from "../lib/catalog";
 import { useStore } from "../lib/store";
-import { Badge, CopyBtn } from "../components/ui";
+import { Badge, Btn, CopyBtn } from "../components/ui";
 
 export default function Dashboard() {
   const { status, servers, tokens, me, navigate } = useStore();
@@ -16,11 +15,28 @@ export default function Dashboard() {
   const modulesOn = modules.filter((m) => m.enabled && !disabled.has(m.name)).length;
   const cards = modules.length - modulesOn;
 
+  const endpoint = `${window.location.origin}/mcp`;
   const done1 = servers.length > 0;
   const done2 = tokens.length > 0;
+  const done3 = done1 && done2;
+  const stepsDone = (done1 ? 1 : 0) + (done2 ? 1 : 0) + (done3 ? 1 : 0);
 
   return (
     <div className="flex flex-col gap-7">
+      <section className="flight-strip" aria-label="MCP endpoint">
+        <div className="endpoint-plate">
+          <span className={`uplink-led ${status ? "" : "is-down"}`} aria-hidden />
+          <div className="min-w-0">
+            <div className="telemetry text-[10px] uppercase tracking-[0.16em] text-disabled">Your endpoint</div>
+            <code title="MCP endpoint URL">{endpoint}</code>
+          </div>
+          <CopyBtn text={endpoint} label="" className="ml-auto" />
+        </div>
+        <Btn variant="primary" icon={<Cable size={13} />} onClick={() => navigate("connect")}>
+          Connect a client
+        </Btn>
+      </section>
+
       <div className="page-intro">
         <div className="page-intro-copy">
           <Heading level={2}>Workstation Status</Heading>
@@ -28,7 +44,9 @@ export default function Dashboard() {
             Live view of the systems exposed through your MCP endpoint.
           </Text>
         </div>
-        <Button label="Connect guide" variant="primary" icon={<ArrowRight size={15} />} onClick={() => navigate("connect")} />
+        <Btn variant="link" icon={<ArrowRight size={13} />} onClick={() => navigate("modules")}>
+          Manage systems
+        </Btn>
       </div>
 
       <section className="metrics-rail" aria-label="Endpoint telemetry">
@@ -43,11 +61,12 @@ export default function Dashboard() {
           <div className="section-heading mb-3">
             <Heading level={4} className="!mb-0">Systems Status Wall</Heading>
             <span className="section-count">{modulesOn} / {modules.length}</span>
-            <Button label="Manage" variant="ghost" size="sm" className="ml-1" onClick={() => navigate("modules")} />
           </div>
           {modules.length === 0 ? (
-            <div className="module-summary">
-              <div className="module-summary-row text-secondary">No module data yet — start the server to bring the wall live.</div>
+            <div className="cold-instrument">
+              <span className="cold-flag">No signal</span>
+              <div className="cold-title">The wall is cold</div>
+              <p className="cold-copy">No module data yet — start the server to bring the status wall live.</p>
             </div>
           ) : (
             <div className="module-summary">
@@ -82,25 +101,33 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section className="flex flex-col gap-6 border-l border-border pl-5 xl:pl-7">
-          <div>
-            <Heading level={4}>Your endpoint</Heading>
-            <div className="endpoint-plate mt-3">
-              <span className="uplink-led" aria-hidden />
-              <code title="MCP endpoint URL">{`${window.location.origin}/mcp`}</code>
-              <CopyBtn text={`${window.location.origin}/mcp`} label="" />
+        <section className="flex flex-col gap-5 border-l border-border pl-5 xl:pl-7">
+          <div className="preflight-panel">
+            <div className="flex items-center justify-between gap-3">
+              <Heading level={4} className="!mb-0">Pre-Flight</Heading>
+              <Badge tone={stepsDone === 3 ? "ok" : "warn"}>{stepsDone} / 3 complete</Badge>
             </div>
-          </div>
-          <div>
-            <Heading level={4}>Pre-Flight</Heading>
-            <Text type="supporting" size="sm" className="mt-1.5 leading-relaxed">
+            <Text type="supporting" size="sm" className="mt-2 leading-relaxed">
               Complete once, then every capability is available from one connection.
             </Text>
-            <ol className="mt-5 quick-steps">
-              <Step n={1} done={done1} text="Add an MCP server" action={<Button label="Servers" variant="ghost" size="sm" onClick={() => navigate("servers")} />} />
-              <Step n={2} done={done2} text="Create an API token" action={<Button label="Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />} />
-              <Step n={3} done={done1 && done2} text={<>Point your client at <code>/mcp</code></>} />
+            <ol className="mt-4 quick-steps">
+              <Step n={1} done={done1} text="Add an MCP server" action={<Btn variant="link" onClick={() => navigate("servers")}>Servers</Btn>} />
+              <Step n={2} done={done2} text="Create an API token" action={<Btn variant="link" onClick={() => navigate("tokens")}>Tokens</Btn>} />
+              <Step n={3} done={done3} text={<>Point your client at <code>/mcp</code></>} action={<Btn variant="link" onClick={() => navigate("connect")}>Guide</Btn>} />
             </ol>
+          </div>
+
+          <div className="mode-block">
+            <div className="flex items-center justify-between gap-3">
+              <Heading level={4} className="!mb-0">Catalog mode</Heading>
+              <Badge tone={me?.liteCatalog ? "ok" : "neutral"}>{me?.liteCatalog ? "LITE" : "FULL"}</Badge>
+            </div>
+            <Text type="supporting" size="sm" className="leading-relaxed">
+              {me?.liteCatalog
+                ? "Clients see the five hub tools first and search the rest on demand — the token-cheap flight path."
+                : "Clients receive the full tool list on every connect. Switch to lite for large catalogs."}
+            </Text>
+            <Btn variant="link" className="self-start" onClick={() => navigate("modules")}>Adjust</Btn>
           </div>
         </section>
       </div>
