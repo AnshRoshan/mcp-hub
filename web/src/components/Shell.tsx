@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Button } from "@astryxdesign/core/Button";
@@ -9,11 +10,13 @@ import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import {
-  Blocks, Cable, Compass, KeyRound, LayoutDashboard, LogOut, Server, Settings, ShieldCheck, Sparkles, Zap,
+  Blocks, Cable, Compass, KeyRound, LayoutDashboard, LogOut, Moon, Server, Settings, ShieldCheck, Sparkles, Sun, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { signOut } from "../lib/api";
+import { MODULES } from "../lib/catalog";
 import { useStore, type ViewKey } from "../lib/store";
+import { setThemeMode, useThemeMode } from "../theme";
 
 const NAV: { group: string; color: string; items: { view: ViewKey; label: string; Icon: LucideIcon }[] }[] = [
   {
@@ -134,7 +137,12 @@ function SideNavFooter() {
 }
 
 export function AppShellLayout({ children }: { children: React.ReactNode }) {
-  const { view, navigate, user } = useStore();
+  const { view, navigate, user, status, me } = useStore();
+
+  const modules = (status?.modules || []).filter((m) => MODULES[m.name]);
+  const disabled = new Set(me?.disabledModules || []);
+  const go = modules.filter((m) => m.enabled && !disabled.has(m.name)).length;
+  const card = modules.filter((m) => m.enabled && disabled.has(m.name)).length + modules.filter((m) => !m.enabled).length;
 
   const navSections = NAV.map((g) => (
     <SideNavSection key={g.group} title={g.group}>
@@ -171,26 +179,68 @@ export function AppShellLayout({ children }: { children: React.ReactNode }) {
     >
       <div className="workstation-frame">
         <header className="workstation-topbar">
-          <div className="min-w-0">
-            <Text type="label" size="sm" className="text-tertiary">MCP Workstation</Text>
-            <Text size="sm" className="mt-0.5 truncate text-secondary">
-              One endpoint for your enabled capabilities
-            </Text>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-border">
+              <Zap size={13} strokeWidth={2.4} className="text-primary" />
+            </span>
+            <span className="telemetry text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              MCP Workstation
+            </span>
+            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />
+            <span className="hidden items-center gap-2 sm:flex" title="Endpoint uplink">
+              <span className="uplink-led" aria-hidden />
+              <span className="telemetry text-[11px] uppercase tracking-[0.12em] text-secondary">/mcp linked</span>
+            </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <StatusDot variant="success" label="Online" />
-            <Button
-              label="Open endpoint"
-              size="sm"
-              variant="secondary"
-              icon={<Icon icon={Cable} size="sm" />}
-              onClick={() => window.open("/mcp", "_blank")}
-            />
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="hidden items-center gap-1.5 md:flex" aria-label={`${go} systems go, ${card} need attention`}>
+              <span className="flag flag-go">GO {go}</span>
+              <span className="flag flag-card">CARD {card}</span>
+            </span>
+            <UtcClock />
+            <ThemeToggle />
             <Avatar src={user?.image || undefined} name={user?.name || "Account"} alt="" size="sm" tooltip={false} />
           </div>
         </header>
         <main className="workstation-main">{children}</main>
       </div>
     </AppShell>
+  );
+}
+
+/** DAY/NIGHT selector — switches the cockpit between console and paper. */
+function ThemeToggle() {
+  const mode = useThemeMode();
+  const night = mode === "dark";
+  return (
+    <button
+      type="button"
+      className="theme-plate"
+      title={night ? "Switch to daylight register" : "Switch to night console"}
+      aria-label={night ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => setThemeMode(night ? "light" : "dark")}
+    >
+      {night ? <Sun size={13} strokeWidth={2} /> : <Moon size={13} strokeWidth={2} />}
+      <span className="telemetry hidden text-[10px] font-bold uppercase tracking-[0.14em] sm:inline">
+        {night ? "Day" : "Night"}
+      </span>
+    </button>
+  );
+}
+
+/** UTC mission clock — a measurement, so it lives in the mono register. */
+function UtcClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const hh = String(now.getUTCHours()).padStart(2, "0");
+  const mm = String(now.getUTCMinutes()).padStart(2, "0");
+  const ss = String(now.getUTCSeconds()).padStart(2, "0");
+  return (
+    <span className="telemetry text-[11px] tracking-[0.08em] text-secondary" title="Coordinated Universal Time">
+      {hh}:{mm}:{ss}Z
+    </span>
   );
 }

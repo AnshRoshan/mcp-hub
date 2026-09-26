@@ -8,23 +8,37 @@
       name="description"
       content="MCP Workstation is an MCP + Skills hub: connect once, get every tool and skill you enable — with per-user servers, API tokens, and granular toggles. Browse the MCP Directory, add servers by category, and attach any client in minutes."
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%237aa2ff'/><stop offset='1' stop-color='%235eead4'/></linearGradient></defs><path d='M13 2 4 14h6l-1 8 9-12h-6z' fill='url(%23g)'/></svg>"
     />
-    <script type="module" crossorigin src="/assets/index-tmCEDGHi.js"></script>
+    <script>
+      // Pre-paint theme latch: never flash the wrong register
+      try {
+        if (localStorage.getItem("mcw-theme") === "light") {
+          document.documentElement.dataset.theme = "light";
+        }
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-C6uxwhe6.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-hePW80VL.js">
-    <link rel="modulepreload" crossorigin href="/assets/astryx-rLq4FaFJ.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-uEl3isLb.css">
+    <link rel="modulepreload" crossorigin href="/assets/astryx-QmF5gb3j.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DSBLASBz.css">
   </head>
   <body>
     <!--
-      THESIS: Capability management should feel like a live workstation ledger, not a collection of marketing tiles.
-      OWN-WORLD: Quiet Astryx-neutral dark surfaces, fine rules, compact mono metadata, and semantic state signals.
-      STORY: A developer immediately sees endpoint health, then enables precisely the modules, tools, and skills they need.
-      FIRST VIEWPORT: Persistent navigation frames a slim command bar and a wide, information-dense content column with the primary action in reach.
-      FORM: Operate-mode capability ledger; seed key workstation-ledger-2026.
-      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+      THESIS: The workstation is a flight-rules status wall — every system reads GO / CARD / NO-GO at a glance; the category-default card grid is refused in favor of instrument rows and stamped flags.
+      OWN-WORLD: Flight Dynamics runs in two registers of the same law — a night console (flight-black #0d1014 fields, machined seams, 1D ivory grotesk) and a daylight cockpit (ivory paper, ink register); JetBrains Mono is the measurement register in both, and a strict state law holds: GO / CAUTION / ABORT / TELEMETRY color only ever answers a real state, hues tuned per register for ink-vs-emissive legibility.
+      STORY: A developer instantly sees endpoint health and which systems are GO, then toggles precisely what they need — no hunting through tiles.
+      FIRST VIEWPORT: Master status strip (uplink LED + GO/CARD tally + UTC clock) above an instrument rail of four telemetry tiles with LED ladders; left: the systems status wall (module rows, stamped flags, hover leader-notes); right: the PRE-FLIGHT procedure column.
+      FORM: Flight Dynamics (mission-control status walls); seed key 4cb4fbb9; code-led build per user directive.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
     -->
     <div id="root"></div>
   </body>

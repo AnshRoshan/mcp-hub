@@ -1,10 +1,16 @@
 /*
- * MCP Workstation — Astryx (Meta) design system over Tailwind.
+ * MCP Workstation — "Flight Dynamics" world, two registers.
+ * A mission-control status wall: the night console (flight-black fields,
+ * machined panel seams, 1D ivory grotesk) and the daylight cockpit (ivory
+ * paper, ink register). JetBrains Mono is the measurement register in both;
+ * the state law is absolute — color only ever answers a real state
+ * (GO / CAUTION / ABORT / TELEMETRY), with hues tuned per register for
+ * emissive-vs-ink legibility. Built on Astryx tokens: the theme is
+ * re-tuned, not fought.
  *
  * Layer order maps to the documented Astryx cascade:
  * reset → tailwind preflight → astryx component styles → theme token
- * overrides → tailwind utilities. The tailwind-theme.css bridge maps
- * Astryx tokens onto Tailwind utilities (bg-surface, text-primary, …).
+ * overrides → tailwind utilities.
  */
 @layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
 
@@ -16,7 +22,188 @@
 @import "@astryxdesign/core/tailwind-theme.css";
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* ---- small app-level additions that stay out of the design system ---- */
+/* ================================================================
+   Flight Dynamics token law
+   ================================================================ */
+
+:root {
+  /* Instrument type */
+  --fd-display: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fd-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  /* Motion grammar: one exponential-out ease for everything interactive */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* State law — every one of these answers a real state, never decorates */
+  --fd-go: #8fdc9a;
+  --fd-go-deep: #173322;
+  --fd-caution: #e8b34b;
+  --fd-caution-deep: #3a2b10;
+  --fd-abort: #e0705f;
+  --fd-abort-deep: #38191a;
+  --fd-telemetry: #6fc3d6;
+  --fd-telemetry-deep: #122d33;
+  --fd-ivory: #e6e2d6;
+  --fd-ink: #12161b;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Console fields */
+  --color-background-body: #0d1014;
+  --color-background-surface: #14181d;
+  --color-background-card: #10141a;
+  --color-background-popover: #1a1f26;
+  --color-background-muted: #191e25;
+
+  /* 1D ivory register */
+  --color-text-primary: var(--fd-ivory);
+  --color-text-secondary: #a5a294;
+  --color-text-disabled: #5b6068;
+  --color-text-accent: var(--fd-ivory);
+
+  /* Ivory plate primary action */
+  --color-accent: #ded9cb;
+  --color-accent-hover: #efeade;
+  --color-accent-muted: rgba(230, 226, 214, 0.14);
+  --color-on-accent: var(--fd-ink);
+
+  /* Machined seams */
+  --color-border: rgba(230, 226, 214, 0.11);
+  --color-border-emphasized: #3a424c;
+
+  /* State law mapped onto Astryx semantics */
+  --color-success: var(--fd-go);
+  --color-success-muted: var(--fd-go-deep);
+  --color-text-green: var(--fd-go);
+  --color-icon-green: var(--fd-go);
+  --color-background-green: var(--fd-go-deep);
+  --color-border-green: rgba(143, 220, 154, 0.35);
+
+  --color-warning: var(--fd-caution);
+  --color-warning-muted: var(--fd-caution-deep);
+  --color-text-yellow: var(--fd-caution);
+  --color-text-orange: var(--fd-caution);
+  --color-icon-yellow: var(--fd-caution);
+  --color-background-yellow: var(--fd-caution-deep);
+  --color-background-orange: var(--fd-caution-deep);
+  --color-border-yellow: rgba(232, 179, 75, 0.35);
+
+  --color-error: var(--fd-abort);
+  --color-error-muted: var(--fd-abort-deep);
+  --color-text-red: var(--fd-abort);
+  --color-icon-red: var(--fd-abort);
+  --color-background-red: var(--fd-abort-deep);
+  --color-border-red: rgba(224, 112, 95, 0.38);
+
+  --color-text-cyan: var(--fd-telemetry);
+  --color-icon-cyan: var(--fd-telemetry);
+  --color-background-cyan: var(--fd-telemetry-deep);
+  --color-border-cyan: rgba(111, 195, 214, 0.35);
+
+  --color-focus: var(--fd-telemetry);
+  --color-overlay: rgba(4, 6, 9, 0.72);
+  --color-shadow: rgba(0, 0, 0, 0.55);
+  --color-skeleton: #1d232b;
+
+  /* Theme-scoped surfaces: washes are ivory-on-black in the console */
+  --fd-wash-base: #e6e2d6;
+  --fd-wash: rgba(230, 226, 214, 0.03);
+  --fd-hazard: rgba(230, 226, 214, 0.028);
+  --fd-shimmer: rgba(230, 226, 214, 0.07);
+  --led-off: #232a33;
+  --fd-scroll: #262d36;
+  --fd-scroll-hover: #3a424c;
+}
+
+/* ================================================================
+   Daylight cockpit — the same flight rules printed on ivory paper.
+   State law is unchanged; the hues darken so they read as ink-stamped
+   flags on a light field instead of emissive lamps on black.
+   ================================================================ */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* State law, ink-on-paper register */
+  --fd-go: #1c7d40;
+  --fd-go-deep: #d9ebda;
+  --fd-caution: #8a5c05;
+  --fd-caution-deep: #f2e3bd;
+  --fd-abort: #b5402e;
+  --fd-abort-deep: #f3dcd6;
+  --fd-telemetry: #0d687c;
+  --fd-telemetry-deep: #d3e7ec;
+
+  /* Paper fields */
+  --color-background-body: #eceadf;
+  --color-background-surface: #f4f2e9;
+  --color-background-card: #faf9f2;
+  --color-background-popover: #fffef8;
+  --color-background-muted: #e5e1d3;
+
+  /* Ink register */
+  --color-text-primary: #191d21;
+  --color-text-secondary: #5a5d54;
+  --color-text-disabled: #9a9c91;
+  --color-text-accent: #191d21;
+
+  /* Ink plate primary action (ivory plate inverted) */
+  --color-accent: #171b20;
+  --color-accent-hover: #2a3038;
+  --color-accent-muted: rgba(23, 27, 32, 0.1);
+  --color-on-accent: #ece9de;
+
+  /* Panel seams on paper */
+  --color-border: rgba(25, 29, 33, 0.16);
+  --color-border-emphasized: #b6b1a1;
+
+  /* State law mapped onto Astryx semantics */
+  --color-success: var(--fd-go);
+  --color-success-muted: var(--fd-go-deep);
+  --color-text-green: var(--fd-go);
+  --color-icon-green: var(--fd-go);
+  --color-background-green: var(--fd-go-deep);
+  --color-border-green: rgba(28, 125, 64, 0.4);
+
+  --color-warning: var(--fd-caution);
+  --color-warning-muted: var(--fd-caution-deep);
+  --color-text-yellow: var(--fd-caution);
+  --color-text-orange: var(--fd-caution);
+  --color-icon-yellow: var(--fd-caution);
+  --color-background-yellow: var(--fd-caution-deep);
+  --color-background-orange: var(--fd-caution-deep);
+  --color-border-yellow: rgba(138, 92, 5, 0.4);
+
+  --color-error: var(--fd-abort);
+  --color-error-muted: var(--fd-abort-deep);
+  --color-text-red: var(--fd-abort);
+  --color-icon-red: var(--fd-abort);
+  --color-background-red: var(--fd-abort-deep);
+  --color-border-red: rgba(181, 64, 46, 0.42);
+
+  --color-text-cyan: var(--fd-telemetry);
+  --color-icon-cyan: var(--fd-telemetry);
+  --color-background-cyan: var(--fd-telemetry-deep);
+  --color-border-cyan: rgba(13, 104, 124, 0.4);
+
+  --color-focus: var(--fd-telemetry);
+  --color-overlay: rgba(35, 32, 24, 0.42);
+  --color-shadow: rgba(70, 63, 45, 0.28);
+  --color-skeleton: #dfdbcc;
+
+  /* Theme-scoped surfaces: washes are ink-on-ivory in daylight */
+  --fd-wash-base: #191d21;
+  --fd-wash: rgba(25, 29, 33, 0.045);
+  --fd-hazard: rgba(25, 29, 33, 0.05);
+  --fd-shimmer: rgba(25, 29, 33, 0.06);
+  --led-off: #d8d3c3;
+  --fd-scroll: #c7c2b1;
+  --fd-scroll-hover: #a9a391;
+}
+
+/* ---- instrument typography ---- */
 
 html,
 body {
@@ -26,11 +213,19 @@ body {
 }
 
 body {
-  font-feature-settings: "ss01" 1, "cv02" 1;
+  font-family: var(--fd-display);
+  font-feature-settings: "ss01" 1, "tnum" 0;
 }
 
+code,
+pre,
+.font-mono {
+  font-family: var(--fd-mono);
+}
+
+/* Browser surfaces belong to the world too */
 html {
-  scrollbar-color: var(--color-border-emphasized) transparent;
+  scrollbar-color: var(--fd-scroll-hover) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -40,28 +235,34 @@ html {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 999px;
+  background: var(--fd-scroll);
   border: 3px solid transparent;
+  border-radius: 0;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-border-emphasized);
+  background-color: var(--fd-scroll-hover);
 }
 
 ::selection {
-  background: var(--color-accent-muted);
-  color: var(--color-text-primary);
+  background: rgba(232, 179, 75, 0.85);
+  color: var(--fd-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--fd-telemetry);
+  outline-offset: 2px;
 }
 
 /* ================================================================
-   Layout
+   Layout frame
    ================================================================ */
 
 .workstation-frame {
   min-height: calc(100dvh - 48px);
 }
 
+/* Master mission strip */
 .workstation-topbar {
   display: flex;
   min-height: 58px;
@@ -89,8 +290,36 @@ html {
   max-width: 74ch;
 }
 
+.page-intro h2 {
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+/* Endpoint plate — the product's one mechanism, shown doing its job */
+.endpoint-plate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background-body);
+  padding: 12px 14px;
+}
+
+.endpoint-plate code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--fd-mono);
+  font-size: 12.5px;
+  color: var(--fd-telemetry);
+}
+
 /* ================================================================
-   Section headers
+   Section headers — engraved panel titles
    ================================================================ */
 
 .section-heading {
@@ -103,16 +332,16 @@ html {
 .section-count {
   margin-left: auto;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 3px 8px;
   color: var(--color-text-secondary);
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-family: var(--fd-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
 /* ================================================================
-   Category sections — used across Modules, Skills, Directory
+   Category sections
    ================================================================ */
 
 .category-section {
@@ -132,11 +361,13 @@ html {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid var(--color-border);
-  padding: 3px 10px 3px 4px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 3px 10px 3px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--color-text-secondary);
   background: var(--color-background-surface);
   transition: border-color 160ms ease, color 160ms ease;
@@ -148,7 +379,7 @@ html {
 }
 
 /* ================================================================
-   Card grid — used for Module cards and Skill cards
+   Card grid — bolted panel zones
    ================================================================ */
 
 .card-grid {
@@ -163,27 +394,33 @@ html {
   }
 }
 
-/* ================================================================
-   Module card
-   ================================================================ */
-
-.module-card {
+.module-card,
+.skill-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-surface);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--fd-wash-base) 2.5%, transparent), transparent 42px),
+    var(--color-background-card);
   padding: 16px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease;
 }
 
-.module-card:hover {
+.module-card:hover,
+.skill-card:hover {
   border-color: var(--color-border-emphasized);
-  box-shadow: 0 1px 3px var(--color-background-body);
 }
 
-.module-card.is-off {
-  opacity: 0.6;
+.module-card.is-off,
+.skill-card.is-off {
+  opacity: 1;
+}
+
+.module-card.is-off .module-card-body,
+.skill-card.is-off .skill-card-desc {
+  color: var(--color-text-disabled);
 }
 
 .module-card-header {
@@ -236,7 +473,7 @@ html {
   justify-content: space-between;
   gap: 8px;
   padding: 5px 6px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 12.5px;
   transition: background-color 120ms ease;
 }
@@ -246,32 +483,9 @@ html {
 }
 
 .module-card-tool-name {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-family: var(--fd-mono);
   font-size: 12px;
   color: var(--color-text-primary);
-}
-
-/* ================================================================
-   Skill card
-   ================================================================ */
-
-.skill-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-surface);
-  padding: 16px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.skill-card:hover {
-  border-color: var(--color-border-emphasized);
-  box-shadow: 0 1px 3px var(--color-background-body);
-}
-
-.skill-card.is-off {
-  opacity: 0.6;
 }
 
 .skill-card-header {
@@ -308,14 +522,14 @@ html {
 }
 
 /* ================================================================
-   Capability list (flat list variant — Servers, Tokens, Dashboard)
+   Capability list — instrument rows on a machined panel
    ================================================================ */
 
 .capability-list {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-surface);
+  border-radius: 6px;
+  background: var(--color-background-card);
 }
 
 .capability-row + .capability-row {
@@ -331,11 +545,14 @@ html {
 }
 
 .capability-row:hover {
-  background: var(--color-background-muted);
+  background: var(--fd-wash);
 }
 
 .capability-row.is-off {
-  opacity: 0.68;
+  opacity: 1;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, var(--fd-hazard) 14px 16px),
+    transparent;
 }
 
 .capability-tools {
@@ -351,7 +568,7 @@ html {
   min-height: 36px;
   align-items: center;
   gap: 10px;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 4px 8px;
 }
 
@@ -360,7 +577,7 @@ html {
 }
 
 /* ================================================================
-   Metrics rail (Dashboard)
+   Instrument rail (Dashboard telemetry tiles)
    ================================================================ */
 
 .metrics-rail {
@@ -368,8 +585,8 @@ html {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-surface);
+  border-radius: 6px;
+  background: var(--color-background-card);
 }
 
 .metrics-rail > div {
@@ -382,7 +599,7 @@ html {
 }
 
 /* ================================================================
-   Directory row
+   Directory rows
    ================================================================ */
 
 .directory-row {
@@ -399,21 +616,22 @@ html {
 }
 
 .directory-row:hover {
-  background: var(--color-background-muted);
+  background: var(--fd-wash);
 }
 
 /* ================================================================
-   Dashboard module summary (compact table)
+   Systems status wall (Dashboard module table)
    ================================================================ */
 
 .module-summary {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-surface);
+  border-radius: 6px;
+  background: var(--color-background-card);
 }
 
 .module-summary-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 60px 80px;
   align-items: center;
@@ -427,11 +645,25 @@ html {
 }
 
 .module-summary-row:hover {
-  background: var(--color-background-muted);
+  background: var(--fd-wash);
+}
+
+/* Wall header plate + dimmed non-GO rows */
+.wall-head {
+  font-family: var(--fd-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-disabled);
+}
+
+.row-dim .truncate,
+.row-dim .telemetry {
+  color: var(--color-text-disabled);
 }
 
 /* ================================================================
-   Quick steps (Dashboard / Connect)
+   Pre-flight procedure steps
    ================================================================ */
 
 .quick-steps {
@@ -445,7 +677,7 @@ html {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid transparent;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
@@ -453,6 +685,234 @@ html {
 .quick-step:hover {
   border-color: var(--color-border);
   background: var(--color-background-surface);
+}
+
+/* ================================================================
+   World components: flags, ladders, leader notes, stamps
+   ================================================================ */
+
+/* Stamped state flag — square plate, mono, uppercase. State law only. */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--color-border-emphasized);
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-family: var(--fd-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.flag-go {
+  color: var(--fd-go);
+  border-color: color-mix(in srgb, var(--fd-go) 45%, transparent);
+  background: color-mix(in srgb, var(--fd-go) 8%, transparent);
+}
+
+.flag-card {
+  color: var(--fd-caution);
+  border-color: color-mix(in srgb, var(--fd-caution) 45%, transparent);
+  background: color-mix(in srgb, var(--fd-caution) 8%, transparent);
+}
+
+.flag-nogo {
+  color: var(--fd-abort);
+  border-color: color-mix(in srgb, var(--fd-abort) 50%, transparent);
+  background: color-mix(in srgb, var(--fd-abort) 9%, transparent);
+}
+
+.flag-off {
+  color: var(--color-text-disabled);
+  border-color: var(--color-border-emphasized);
+}
+
+.flag-telemetry {
+  color: var(--fd-telemetry);
+  border-color: color-mix(in srgb, var(--fd-telemetry) 45%, transparent);
+  background: color-mix(in srgb, var(--fd-telemetry) 7%, transparent);
+}
+
+/* Telemetry value — the measurement register */
+.telemetry {
+  font-family: var(--fd-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* DAY/NIGHT selector plate — machined family of the flag stamps */
+.theme-plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border-emphasized);
+  border-radius: 3px;
+  padding: 3px 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.theme-plate:hover {
+  color: var(--color-text-primary);
+  border-color: var(--fd-telemetry);
+}
+
+/* LED ladder: segments light left-to-right; lit count via --lit */
+.led-ladder {
+  display: flex;
+  gap: 3px;
+  margin-top: 10px;
+}
+
+.led {
+  height: 5px;
+  flex: 1;
+  background: var(--led-off);
+  border-radius: 1px;
+}
+
+.led.on {
+  background: var(--led-color, var(--fd-telemetry));
+}
+
+/* Leader-line annotation: pinned to its row, appears on hover/focus */
+.leader-note {
+  position: absolute;
+  right: 14px;
+  bottom: calc(100% - 4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-background-popover);
+  font-family: var(--fd-mono);
+  font-size: 10.5px;
+  color: var(--color-text-secondary);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.leader-note::before {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: var(--color-border-emphasized);
+}
+
+.module-summary-row:hover .leader-note,
+.module-summary-row:focus-within .leader-note {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Uplink LED — pulses only while live */
+.uplink-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fd-go);
+  animation: led-breathe 2.4s ease-in-out infinite;
+}
+
+.uplink-led.is-down {
+  background: var(--fd-abort);
+  animation: none;
+}
+
+@keyframes led-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* The one authored moment: instrument power-on sweep */
+@keyframes power-sweep {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.power-on {
+  animation: power-sweep 420ms var(--ease-expo) both;
+}
+
+.power-on:nth-child(2) { animation-delay: 70ms; }
+.power-on:nth-child(3) { animation-delay: 140ms; }
+.power-on:nth-child(4) { animation-delay: 210ms; }
+
+/* Staggered reveal of status-wall rows — one cascade, cheap CSS only */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.module-summary .module-summary-row {
+  animation: row-in 260ms var(--ease-expo) backwards;
+}
+
+.module-summary .module-summary-row:nth-child(1) { animation-delay: 40ms; }
+.module-summary .module-summary-row:nth-child(2) { animation-delay: 75ms; }
+.module-summary .module-summary-row:nth-child(3) { animation-delay: 110ms; }
+.module-summary .module-summary-row:nth-child(4) { animation-delay: 145ms; }
+.module-summary .module-summary-row:nth-child(5) { animation-delay: 180ms; }
+.module-summary .module-summary-row:nth-child(6) { animation-delay: 215ms; }
+.module-summary .module-summary-row:nth-child(7) { animation-delay: 250ms; }
+.module-summary .module-summary-row:nth-child(8) { animation-delay: 285ms; }
+.module-summary .module-summary-row:nth-child(9) { animation-delay: 320ms; }
+.module-summary .module-summary-row:nth-child(n + 10) { animation-delay: 350ms; }
+
+/* Tactile press — physical push on every control */
+button:not(:disabled):active {
+  transform: scale(0.985);
+}
+
+button {
+  transition: transform 160ms var(--ease-expo), background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+/* Hover lift on panel cards */
+.module-card:hover,
+.skill-card:hover {
+  border-color: var(--color-border-emphasized);
+  transform: translateY(-1px);
+}
+
+.module-card,
+.skill-card {
+  transition: border-color 200ms var(--ease-expo), transform 200ms var(--ease-expo);
+}
+
+/* Skeleton shimmer — loading states match final layout sizes.
+   The sweep is a transform on a pseudo-element, never layout props. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-skeleton);
+  border-radius: 4px;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--fd-shimmer) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
 }
 
 /* ================================================================
