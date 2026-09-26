@@ -9,7 +9,8 @@ plus a dense set of built-in tools — behind one connection.
 Run it in **platform mode** (set `BETTER_AUTH_SECRET`) and it becomes a full product:
 
 - **Sign-in with Google or GitHub** (Better Auth) at a built-in dashboard (`/`)
-- **Per-user MCP servers** — each user registers their own stdio/HTTP MCP servers,
+- **Per-user MCP servers** — each user registers their own stdio/HTTP MCP servers
+  (stdio only for commands the operator allowlists via `STDIO_ALLOWED_COMMANDS`),
   with secrets stored **encrypted** (AES-256-GCM), and toggles them on/off
 - **API tokens** per user; every `/mcp` request must carry `Authorization: Bearer <token>`
 - **Per-user catalogs** — tool lists are built per request from *that user's* enabled
@@ -61,6 +62,13 @@ npm start
 npm start                   # platform mode stays off without BETTER_AUTH_SECRET
 ```
 
+> **Run it from the project root.** The server resolves `public/` (the built dashboard),
+> `config/servers.json` and the default `data/` paths relative to the process working
+> directory (the `skills/` library is resolved next to the code instead, so it always
+> loads). `public/` is Vite build output that is committed on purpose so `npm start` works
+> without a dashboard build; after editing anything in `web/` run `npm run build:web` to
+> refresh it.
+
 You'll see a startup report listing active modules, connected upstream servers, and
 whether platform mode is on:
 
@@ -89,19 +97,31 @@ GITHUB_CLIENT_SECRET=...
 ```
 
 Then open **http://localhost:3125/** and sign in with Google or GitHub. Email/password
-sign-in is on by default for development (`ALLOW_EMAIL_AUTH=false` to disable).
+sign-in is **off by default** (so a public deploy isn't open for anyone to register) —
+set `ALLOW_EMAIL_AUTH=true` for local development without OAuth providers.
 
 From the dashboard you can:
 
 - **Add MCP servers** — pick `stdio` (a local command) or `http` (a remote endpoint),
   name it (tools appear as `name_*`), and set env vars / headers. Secrets are encrypted
   at rest and never returned by the API.
+  **`stdio` is opt-in by the operator:** because the hub spawns those commands as its own
+  OS user, user-registered `stdio` servers are refused until their command is on the
+  `STDIO_ALLOWED_COMMANDS` allowlist (empty by default — i.e. no user `stdio` servers at
+  all). `http` servers need no allowlist. Entries in `config/servers.json` are
+  operator-owned and always start.
 - **Toggle servers on/off** — disabled servers stop appearing in your endpoint instantly.
 - **Mint API tokens** — name a token (e.g. "Claude Code"), copy it once, revoke anytime.
+  Clients can also mint one themselves through the built-in **OAuth 2.1 authorization
+  server** (dynamic client registration + PKCE + a consent screen) instead of pasting a
+  token — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Toggle modules & individual tools** — everything is on by default; drill into any
   module and switch off single tools, or hide whole categories you don't use.
 - **Browse the Skills Hub** — enable/disable skills, read their full instructions, and
   let your clients pull them over MCP.
+- **Watch your own traffic** — the dashboard's usage panel (`GET /api/usage`) rolls up
+  *your* tool calls from the `usage_events` table: daily counts, latency, failures and
+  top tools, kept for 90 days.
 
 ## Connect your AI client
 
@@ -161,27 +181,45 @@ npm run stdio
 > never displayed back) and those shadow the server's process env — so one
 > user's `gh_*` calls never run with another's token.
 
+Every module registered by `registerBuiltins()` in `src/server.ts`, plus the
+`workstation` meta-tools that every catalog carries — 20 modules, 107 tools with
+every key set (fewer until you supply keys; `workstation_status` reports the
+live number and the reason for each disabled module):
+
 | Module | Tools | Enabled by |
 |---|---|---|
 | `time` | `get_current_time`, `convert_timezone` | always |
 | `uuid` | `uuid_generate` | always |
-| `fetch` | `fetch_url` (timeout, size cap, domain allowlist) | always |
+| `fetch` | `fetch_url` (timeout, size cap, per-call domain allowlist, SSRF-guarded) | always |
 | `memory` | `memory_set/get/delete/list/search/clear` — persistent key-value store | always |
 | `filesystem` | `fs_read/write/list/mkdir/remove/stat/search` — **sandboxed** to `FILESYSTEM_ROOTS` | always |
-| `sqlite` | `sqlite_list_tables/query/execute` — via `node:sqlite` | always |
 | `knowledge` | `knowledge_index/search/fts_search/vector_search/index_workspace/status/clear` — **full-text (FTS5/BM25) + semantic vector search**, zero config | always |
-| `github` | 27 tools — `gh_get_user/get_repo/create_repo/list_repos/search_repos`, issues (`list/get/create/update/comment/search`), PRs (`list/get/create/merge/review`), files (`get/write/delete`), `list_commits/branches/releases/create_release`, Actions (`trigger_workflow/list_workflow_runs`), `rate_limit` | `GITHUB_TOKEN` |
+| `github` | 27 tools — `gh_get_user/get_repo/create_repo/list_repos/search_repos`, issues (`gh_list_issues/get_issue/create_issue/update_issue/add_issue_comment/list_issue_comments/search_issues`), PRs (`gh_list_pull_requests/get_pull_request/create_pull_request/merge_pull_request/create_pull_request_review`), files (`gh_get_file/write_file/delete_file`), `gh_list_commits/list_branches/list_releases/create_release`, Actions (`gh_trigger_workflow/list_workflow_runs`), `gh_rate_limit` | `GITHUB_TOKEN` |
 | `jira` | 15 tools — `jira_search_issues` (JQL), `get/create/update_issue`, `list_transitions/transition_issue`, `add_comment/get_comments`, `add_worklog`, `list_projects/get_project`, `list_boards/list_sprints`, `list_issue_types/list_assignable_users` | `JIRA_BASE_URL` + `JIRA_API_TOKEN` (+`JIRA_EMAIL`) |
 | `search` | `web_search`, `web_extract` (Brave / Tavily / Exa) | any of `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY` |
+| `postgres` | `pg_list_tables/describe_table/query` | `DATABASE_URL` |
+| `sqlite` | `sqlite_list_tables/query/execute` — via `node:sqlite` | always (skipped only if `node:sqlite` is unavailable) |
+| `notion` | `notion_search/get_page/list_block_children/create_page/append_blocks` | `NOTION_TOKEN` |
+| `slack` | `slack_post_message/list_channels/channel_history/list_users` | `SLACK_BOT_TOKEN` |
 | `crypto` | `crypto_price`, `crypto_market`, `crypto_trending`, `crypto_search`, `crypto_convert` — live prices, market data and conversions (CoinGecko) | always |
-| `hn` | `hn_top/new/ask/show`, `hn_item`, `hn_search` — Hacker News stories, threads and full-text search | always |
+| `hn` | `hn_top/new/ask/show`, `hn_item`, `hn_search` — Hacker News stories, threads and full-text search (Firebase + Algolia) | always |
 | `weather` | `weather_current`, `weather_forecast`, `weather_geocode` — conditions & forecasts (Open-Meteo) | always |
+| `devkit` | `regex_test`, `text_diff`, `cron_parse`, `json_query`, `color_contrast` — offline developer utilities, no network | always |
+| `youtube` | `yt_video_info` — a video's title, channel and thumbnail via YouTube oEmbed | always (no API key) |
+| `skills` | `skills_list`, `skills_get` — pull your enabled skills' instructions over MCP | always (per-user enabled set from `skills/*.md`) |
+| `workstation` | `workstation_status`, `workstation_reload` | always |
+
+> GitHub and Jira both support **enterprise/self-hosted instances** via `GITHUB_API_URL`
+> and `JIRA_BASE_URL`. Jira accepts an API token (Basic auth with `JIRA_EMAIL`) or a PAT.
+
+Copy `.env.example` to `.env`, fill in the keys you have, and restart. Missing keys simply
+disable that module — everything else keeps working.
 
 ## Lite catalog — search-first, token-frugal (on by default for new users)
 
 Every agent pays for `tools/list` in its context window — a full workstation
-catalog is 60+ tools ≈ tens of thousands of tokens. **Lite mode** lists only
-five Tier-0 tools and keeps everything else fully reachable behind them:
+catalog (all keys set) is 107 tools ≈ tens of thousands of tokens. **Lite mode**
+lists only five Tier-0 tools and keeps everything else fully reachable behind them:
 
 | Tool | Role |
 |---|---|
@@ -198,17 +236,6 @@ against a 20-probe intent set at ≥90% accuracy).
 Oversized tool results (default >200KB, `MAX_RESULT_BYTES`) are spilled to a
 file in the workspace and replaced by a preview + `fs_read` pointer, so one
 chatty upstream never floods the agent's context.
-| `skills` | `skills_list`, `skills_get` — pull your enabled skills' instructions over MCP | always |
-
-> GitHub and Jira both support **enterprise/self-hosted instances** via `GITHUB_API_URL`
-> and `JIRA_BASE_URL`. Jira accepts an API token (Basic auth with `JIRA_EMAIL`) or a PAT.
-| `postgres` | `pg_list_tables/describe_table/query` | `DATABASE_URL` |
-| `notion` | `notion_search/get_page/list_block_children/create_page/append_blocks` | `NOTION_TOKEN` |
-| `slack` | `slack_post_message/list_channels/channel_history/list_users` | `SLACK_BOT_TOKEN` |
-| `workstation` | `workstation_status`, `workstation_reload` | always |
-
-Copy `.env.example` to `.env`, fill in the keys you have, and restart. Missing keys simply
-disable that module — everything else keeps working.
 
 ### 🧠 Knowledge base — full-text + vector search (zero config)
 
@@ -237,16 +264,18 @@ stored in the local HuggingFace cache. No API keys required.
 
 The workstation ships a library of **skills**: markdown playbooks for recurring work
 (`debugging`, `code-review`, `git-workflow`, `sql-querying`, `web-research`,
-`documentation`, `deployment-checklist`, `security-audit` — each with a description,
-category and version). They sit **next to** the MCP tools in one hub:
+`documentation`, `deployment-checklist`, `security-audit`, … — each with a description,
+category and version). They sit **next to** the MCP tools in one hub; the full set is
+simply whatever is in `skills/*.md`, and `skills_list` reports it exactly:
 
 - Everything is **on by default** — no setup.
 - The dashboard has a dedicated **Skills** page: browse by category, read any skill's
   full instructions in a preview, and toggle skills on/off per user.
 - Connected clients pull them over MCP: `skills_list` (names, descriptions, categories)
   then `skills_get { "name": "debugging" }` for the full content.
-- Skills live in `skills/*.md` — add one with the same frontmatter (name, description,
-  category, version) and rebuild.
+- Skills live in flat `skills/*.md` files (no subfolders) with `name` frontmatter —
+  `description`, `category` (default `General`) and `version` (default `1.0.0`) are
+  optional. The folder is read once at boot, so **restart** the server to pick one up.
 
 ## Adding your own MCP servers (the aggregator part)
 
@@ -277,6 +306,9 @@ into its own list, prefixed with the server's `key`.
 
 - `enabled: false` (or a bad entry) skips the server; a server that fails to start is
   reported in `workstation_status` instead of crashing the workstation.
+- Upstream **tools and resources** are both merged in. Prompts are not proxied.
+- These operator-owned entries always start — `STDIO_ALLOWED_COMMANDS` only gates
+  servers that *users* register from the dashboard.
 - After editing `servers.json`, call the `workstation_reload` tool — because every HTTP
   request builds a fresh tool catalog from the live registry, the new tools appear on the
   very next `tools/list`.
@@ -284,7 +316,10 @@ into its own list, prefixed with the server's `key`.
 ## Operations
 
 - **`workstation_status`** — which modules are active (and why others aren't), which
-  upstream servers are connected, total tool count, protocol version.
+  upstream servers are connected, total tool count, catalog mode (lite/full), the
+  description-quality score, and the rate-limit / audit / health-check settings. It
+  reports the assembled catalog of *the caller*, so in platform mode it is a per-user
+  view.
 - **`workstation_reload`** — re-reads `servers.json`, reconnects upstreams, refreshes the
   tool list.
 - Endpoint path and port are configurable: `MCP_PATH` (default `/mcp`), `PORT` (default `3125`).
@@ -301,7 +336,21 @@ into its own list, prefixed with the server's `key`.
   (default `./data/workspace`).
 - **Databases are read-only by default.** `pg_query` and `sqlite_query` block write
   statements unless you explicitly set `PG_ALLOW_WRITE=true` / `SQLITE_ALLOW_WRITE=true`.
-- `fetch_url` can be restricted to specific domains with `allowed_domains`.
+- **User-registered `stdio` servers are refused unless you allowlist them.** The hub spawns
+  those commands as its own OS user, so `STDIO_ALLOWED_COMMANDS` (bare executable names,
+  comma separated, **empty by default**) gates them: the dashboard API rejects a
+  non-allowlisted command with a `400`, and the spawn path re-checks it in case the row
+  predates the current list. Operator entries in `config/servers.json` are unaffected.
+- **Rate limiting + audit logging.** In platform mode per-user tool-call rate limiting is
+  on by default (`RATE_LIMIT_*`); single-user runs have it off. Every tool call is written
+  to the audit log (`AUDIT_LOG_ENABLED`, default on) — arg values are **not** masked unless
+  you set `AUDIT_LOG_MASK_ARGS=true`.
+- **Outbound fetches are SSRF-guarded.** `fetch_url` and `web_search`/`web_extract` only
+  accept http(s) URLs without embedded credentials, refuse hosts that resolve to loopback,
+  private, link-local (e.g. the cloud metadata address) or otherwise reserved ranges, and
+  re-screen every redirect hop (max 3). `allowed_domains` narrows a single call further;
+  `FETCH_ALLOWED_DOMAINS` restricts the whole deployment to a fixed domain set — it can
+  only narrow, never open up an internal host. Leaving it unset means "any public host".
 - Every key-gated module is **off unless you set the key**. Nothing phones home.
 - In single-user mode (no `BETTER_AUTH_SECRET`) there is **no auth** — bind to localhost
   or put a reverse proxy in front. Sessions use `secure` cookies automatically when the
@@ -332,45 +381,55 @@ src/
   index.ts            entry point: boots workstation + platform (auth, DB, dashboard)
   server.ts           per-request McpServer built for the authenticated user,
                       shared registry + per-user upstream aggregators
-  http.ts             node:http front-end: /api/auth/*, /api/*, static UI, /mcp
-                      (Bearer-gated in platform mode, legacy SSE bridge kept)
-  config.ts           .env + config/servers.json loading
+  http.ts             node:http front-end: /api/auth/*, /api/*, /oauth/*, /register,
+                      /.well-known/*, static UI, /mcp (Bearer-gated in platform mode,
+                      legacy SSE bridge kept)
+  config.ts           .env + config/servers.json loading + the stdio command allowlist
   registry.ts         mutable tool registry + module registration
+  netguard.ts         SSRF guard for caller-supplied URLs (used by fetch + search)
+  ratelimit.ts        per-user tool-call rate limiter
+  audit.ts            structured audit log per tool call (optional arg masking)
+  healthcheck.ts      upstream health probes + auto-reconnect
+  result.ts           text/json/error CallToolResult helpers
+  utils.ts            env readers + shared pure helpers
   platform/
     auth.ts           Better Auth instance (Google + GitHub, cookies)
-    db.ts             SQLite: auth tables (auto-migrated) + servers/tokens/prefs
+    db.ts             SQLite: auth tables (auto-migrated) + servers/tokens/prefs/
+                      oauth_clients
     tokens.ts         API-token mint/verify + the /mcp Bearer verifier
     api.ts            dashboard REST API (servers CRUD, tokens, prefs, skills,
                       secrets, registry import proxy)
     oauth.ts          OAuth 2.1 authorization server for /mcp (RFC 9728/7591:
                       DCR, consent, PKCE S256 → mcw_ bearer)
     serverConfig.ts   encrypted server-row codec (shared by core + REST)
-  toolsearch.ts       ephemeral BM25 tool index + module synonym table
-  descli.ts           tool-description quality linter
-  serverConfig → platform/serverConfig.ts  server-row ↔ runtime codec
     skills.ts         loads skills/*.md (frontmatter) into the skills hub
     crypto.ts         AES-256-GCM secret encryption + SHA-256 token hashing
+  toolsearch.ts       ephemeral BM25 tool index + module synonym table
+  descli.ts           tool-description quality linter
   proxy/
     upstream.ts       v2 client connection to one stdio/HTTP MCP server, namespacing
     aggregator.ts     connect-all / list-all / route-calls across upstreams
-  builtins/           time, uuid, fetch, memory, filesystem, knowledge, github,
-                      jira, search, postgres, sqlite, notion, slack, crypto, hn,
-                      weather (+ the skills module)
+                      (tools and resources)
+  builtins/           time, uuid, fetch, memory, filesystem, knowledge, github, jira,
+                      search, postgres, sqlite, notion, slack, crypto, hn, weather,
+                      devkit, youtube — the `skills` and `workstation` modules are
+                      defined in server.ts
 skills/               *.md — the skills hub library (one markdown file per skill)
-public/
-  index.html          built React dashboard (emitted by `npm run build:web`)
+public/               Vite build output (committed; `npm run build:web` regenerates it)
+  index.html          built React dashboard
   assets/             hashed JS/CSS bundles (React + Astryx + Tailwind)
 web/                  the dashboard source — React 19 + Vite + Tailwind CSS v4
                       (layout utilities only), Meta's Astryx design system
-                      (@astryxdesign/core + theme-neutral, forced dark),
-                      lucide-react (icons)
+                      (@astryxdesign/core + theme-neutral) used for overlays and
+                      composites, lucide-react (icons)
   src/
     App.tsx           root: session gate + view router + toast viewport
-    main.tsx          Astryx Theme provider (neutral theme, dark mode)
+    main.tsx          Astryx Theme provider (neutral theme, day/night from `mcw-theme`)
+    theme.ts          day/night register store (defaults to dark)
     lib/api.ts        REST client + types
     lib/store.tsx     app state: session, data, routing, toasts
-    lib/catalog.ts    MCP Directory catalog + connect-guide client configs
-    components/       Shell (AppShell + TopNav + SideNav), ui primitives
+    lib/catalog.ts    module icons/descriptions + MCP Directory catalog + client configs
+    components/       Shell.tsx (hand-built rail + nav), icons, ui primitives
     views/            Auth, Dashboard, Directory, Connect, Servers, Tokens,
                       Credentials, Modules, Skills, Settings
 registry/
@@ -382,16 +441,25 @@ scripts/
   smoke-ghjira.mjs    GitHub + Jira mock-API test
   test-upstream.mjs   tiny stdio MCP server used by the platform test
 tests/
-  *.test.ts           unit tests for core modules (npm run test:unit) —
-                      utils/config/ratelimit/audit, run via node --test + tsx
+  *.test.ts           fast unit tests over the pure layers (env/utils, config, URL &
+                      SQL guards, rate limiting, audit, tokens, tool index, builtins),
+                      run via node --test + tsx
 docs/
   ARCHITECTURE.md     how the pieces fit together
+  mcp-research/       dated (2026-09-25) research brief + decision report
 ```
 
 ## Roadmap ideas
 
 - MRTR (Multi Round-Trip Requests) — tools that ask the user to confirm mid-call
   (e.g. before creating a GitHub issue), via `input_required` results
-- Per-user keys for built-in modules (currently server-level env keys are shared)
 - Tasks extension for long-running agent work
-- Resource + prompt aggregation from upstreams (currently tools only)
+- Prompt aggregation from upstreams (tools and resources are already proxied;
+  prompts are not)
+- In-dashboard rendering of upstream `ui://` (MCP Apps) resources — the hub proxies
+  them for clients, but the dashboard itself has no viewer
+
+Already shipped (previously listed here as ideas): per-user credentials for the
+key-gated built-in modules (`/api/secrets`, encrypted at rest), and upstream
+**resource** aggregation (`resources/list` + `read`, URIs verbatim, capability
+advertised only when an upstream has resources).

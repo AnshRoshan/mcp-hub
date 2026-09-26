@@ -3,3 +3,9 @@ dist/
 .env
 data/
 *.log
+
+# public/ is deliberately NOT ignored: it is the Vite build output of web/
+# (`npm run build:web`) and the server serves it from disk, so a clone runs with
+# no dashboard build step and it is what the npm package ships. Consequence: it
+# must be rebuilt and committed with any change to web/ — see CONTRIBUTING.md,
+# "Why `public/` is committed (and how it drifts)".
