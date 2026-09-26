@@ -82,7 +82,9 @@ export const cryptoDefs: ToolDef[] = [
       },
     },
     handler: async (args) => {
-      const limit = Math.min(num(args.limit, 10), 100);
+      // Clamped both ends and rounded: this is interpolated into the query
+      // string, and `limit: 0` / `-5` / `1.5` are all accepted by callers.
+      const limit = Math.min(Math.max(Math.round(num(args.limit, 10)), 1), 100);
       const vs = str(args.vs_currency, "usd");
       const order = str(args.order, "market_cap_desc");
       const data = (await cg(
