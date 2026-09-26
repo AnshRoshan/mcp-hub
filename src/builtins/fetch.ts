@@ -1,5 +1,6 @@
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
+import { guardedFetch } from "../netguard.js";
 import { num, obj, str } from "../utils.js";
 
 export const fetchDefs: ToolDef[] = [
@@ -26,22 +27,9 @@ export const fetchDefs: ToolDef[] = [
     },
     handler: async (args) => {
       const url = str(args.url);
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        throw new Error(`Invalid URL: "${url}"`);
-      }
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error(`Only http/https URLs are allowed (got "${parsed.protocol}")`);
-      }
-
       const allowed = Array.isArray(args.allowed_domains)
-        ? args.allowed_domains.map(String).map((d) => d.toLowerCase())
+        ? args.allowed_domains.map(String)
         : [];
-      if (allowed.length > 0 && !allowed.includes(parsed.hostname.toLowerCase())) {
-        throw new Error(`Domain "${parsed.hostname}" is not in the allowlist: ${allowed.join(", ")}`);
-      }
 
       const method = str(args.method, "GET").toUpperCase();
       const headers = obj(args.headers) as Record<string, string>;
@@ -51,13 +39,18 @@ export const fetchDefs: ToolDef[] = [
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const res = await fetch(url, {
-          method,
-          headers,
-          body: str(args.body) === "" ? undefined : str(args.body),
-          redirect: "follow",
-          signal: controller.signal,
-        });
+        // Guarded: private/link-local addresses are refused and every redirect
+        // hop is re-screened, so a public URL cannot bounce the request inward.
+        const { response: res, finalUrl } = await guardedFetch(
+          url,
+          {
+            method,
+            headers,
+            body: str(args.body) === "" ? undefined : str(args.body),
+            signal: controller.signal,
+          },
+          { allowedDomains: allowed },
+        );
 
         // Read up to maxBytes with a hard cap.
         const reader = res.body?.getReader();
@@ -87,7 +80,7 @@ export const fetchDefs: ToolDef[] = [
         });
 
         return jsonResult({
-          url: res.url ?? url,
+          url: finalUrl,
           status: res.status,
           statusText: res.statusText,
           truncated,

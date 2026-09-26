@@ -15,6 +15,19 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
 
   const notion = apiClient(API, "Notion", headers);
 
+  /**
+   * Page/database ids are interpolated straight into the request path, so an
+   * agent-supplied value must not be able to carry separators. Notion ids are
+   * 32 hex digits, with or without the canonical dash groups.
+   */
+  function pageId(value: unknown): string {
+    const v = str(value).trim();
+    if (!/^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(v)) {
+      throw new Error(`Notion id must be a 32-digit hex UUID (got "${v}")`);
+    }
+    return v;
+  }
+
   /** Split free text into Notion paragraph blocks. */
   function textToBlocks(text: string): unknown[] {
     return text
@@ -56,7 +69,7 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: { page_id: { type: "string", description: "Notion page ID (UUID, with or without dashes)" } },
         required: ["page_id"],
       },
-      handler: (args) => notion(`/pages/${str(args.page_id)}`).then(jsonResult),
+      handler: (args) => notion(`/pages/${pageId(args.page_id)}`).then(jsonResult),
     },
     {
       name: "notion_list_block_children",

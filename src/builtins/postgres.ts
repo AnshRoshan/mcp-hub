@@ -1,16 +1,25 @@
 import pg from "pg";
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
-import { assertReadOnly, env, envBool, str } from "../utils.js";
+import { assertReadOnly, env, envBool, SQL_WRITE_RE, str } from "../utils.js";
 
 const connectionString = env("DATABASE_URL");
 const allowWrite = envBool("PG_ALLOW_WRITE", false);
 
 const pool = connectionString
-  ? new pg.Pool({ connectionString, max: 5, connectionTimeoutMillis: 10_000 })
+  ? new pg.Pool({
+      connectionString,
+      max: 5,
+      connectionTimeoutMillis: 10_000,
+      statement_timeout: 15_000,
+      // Engine-level read-only for the whole session. The statement filter
+      // below only shapes the error message — `pg` uses the simple query
+      // protocol when no params are passed, so multi-statement input is a real
+      // risk and cannot be safely delegated to a regex.
+      ...(allowWrite ? {} : { options: "-c default_transaction_read_only=on" }),
+    })
   : null;
 
-const WRITE_RE = /^\s*(insert|update|delete|drop|alter|create|truncate|grant|revoke|comment|vacuum|copy|merge|rename|call)\b/i;
 
 export const postgresDefs: ToolDef[] = [
   {
@@ -68,7 +77,7 @@ export const postgresDefs: ToolDef[] = [
     },
     handler: async (args) => {
       const sql = str(args.sql);
-      assertReadOnly(sql, { allowWrite, writeRe: WRITE_RE, dbName: "Postgres", envVar: "PG_ALLOW_WRITE" });
+      assertReadOnly(sql, { allowWrite, writeRe: SQL_WRITE_RE, dbName: "Postgres", envVar: "PG_ALLOW_WRITE" });
       const params = Array.isArray(args.params) ? args.params : [];
       const result = await pool!.query(sql, params);
       return jsonResult({ rowCount: result.rowCount ?? null, rows: result.rows });

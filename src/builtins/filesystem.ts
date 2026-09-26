@@ -14,18 +14,42 @@ for (const root of filesystemRoots) {
   fs.mkdirSync(root, { recursive: true });
 }
 
+/** Roots as the filesystem actually sees them, so comparison is not fooled by links. */
+const realRoots = filesystemRoots.map((root) => {
+  try {
+    return fs.realpathSync(root);
+  } catch {
+    return root;
+  }
+});
+
+function withinRoots(candidate: string): boolean {
+  return realRoots.some((root) => candidate === root || candidate.startsWith(root + path.sep));
+}
+
 /**
  * Resolve a user-supplied path inside the sandbox, throwing if it escapes.
  * Relative paths are resolved against the first configured root.
+ *
+ * A lexical check alone is not containment: a symlink created inside a root
+ * would otherwise send reads, writes and the recursive delete anywhere on the
+ * host. So the deepest existing ancestor is resolved through the real
+ * filesystem and re-checked — the target itself may legitimately not exist yet.
  */
 export function resolveInside(rel: string): string {
   const abs = path.isAbsolute(rel) ? path.resolve(rel) : path.resolve(filesystemRoots[0] ?? DEFAULT_ROOT, rel);
-  const inside = filesystemRoots.some((root) => {
-    const r = path.resolve(root);
-    return abs === r || abs.startsWith(r + path.sep);
-  });
-  if (!inside) {
+  if (!withinRoots(abs)) {
     throw new Error(`Path "${rel}" is outside the allowed roots (${filesystemRoots.join(", ")})`);
+  }
+  let probe = abs;
+  while (!fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  const real = fs.realpathSync(probe);
+  if (!withinRoots(real)) {
+    throw new Error(`Path "${rel}" reaches the filesystem through a link outside the allowed roots`);
   }
   return abs;
 }
