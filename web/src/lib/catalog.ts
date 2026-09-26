@@ -117,6 +117,8 @@ export const MODULES: Record<string, { icon: string; desc: string }> = {
   crypto: { icon: "hex", desc: "Crypto prices & market data" },
   hn: { icon: "news", desc: "Hacker News stories & search" },
   weather: { icon: "cloud", desc: "Weather & forecasts" },
+  devkit: { icon: "wrench", desc: "Regex, diff, cron, JSON, contrast" },
+  youtube: { icon: "play", desc: "Video metadata (oEmbed)" },
   skills: { icon: "bulb", desc: "Skills hub — instruction sets for agents" },
 };
 

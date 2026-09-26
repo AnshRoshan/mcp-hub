@@ -33,6 +33,8 @@ import { slackModule } from "./builtins/slack.js";
 import { cryptoDefs } from "./builtins/crypto.js";
 import { hnDefs } from "./builtins/hn.js";
 import { weatherDefs } from "./builtins/weather.js";
+import { devkitDefs } from "./builtins/devkit.js";
+import { youtubeDefs } from "./builtins/youtube.js";
 
 const VERSION = "0.2.0";
 
@@ -171,6 +173,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     defineModule("crypto", "Finance & Crypto", cryptoDefs, true);
     defineModule("hn", "Web & News", hnDefs, true);
     defineModule("weather", "Utilities", weatherDefs, true);
+    defineModule("devkit", "Development", devkitDefs, true);
+    defineModule("youtube", "Web & API", youtubeDefs, true);
     // Skills hub — tools are generated per user from their enabled skills.
     builtinModules.push({
       name: "skills",

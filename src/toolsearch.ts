@@ -65,6 +65,8 @@ export const MODULE_ALIASES: Record<string, string> = {
   fetch: "http url webpage api download rest",
   time: "clock date now timestamp timezone utc",
   uuid: "id guid identifier random unique",
+  devkit: "regex regular expression diff compare patch cron schedule timer json validate query path contrast color accessibility wcag",
+  youtube: "video yt clip watch tube oembed title channel thumbnail",
   skills: "instruction playbook capability recipe agent skill",
   workstation: "status health modules reload catalog tools servers",
 };
