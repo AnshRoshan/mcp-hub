@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
 import {
@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { signOut } from "../lib/api";
-import { MODULES } from "../lib/catalog";
+import { mcpEndpoint } from "../lib/config";
 import { useStore, type ViewKey } from "../lib/store";
 import { setThemeMode, useThemeMode } from "../theme";
 
@@ -42,24 +42,44 @@ const VIEW_LABEL: Record<ViewKey, { group: string; label: string }> = Object.fro
   NAV.flatMap((g) => g.items.map((i) => [i.view, { group: g.group, label: i.label }])),
 ) as Record<ViewKey, { group: string; label: string }>;
 
-export function AppShellLayout({ children }: { children: React.ReactNode }) {
+export function AppShellLayout({ children }: { children: ReactNode }) {
   const { view, navigate, user, status, me } = useStore();
   const [railOpen, setRailOpen] = useState(false);
 
-  const modules = (status?.modules || []).filter((m) => MODULES[m.name]);
+  const modules = status?.modules || [];
+  const upstreams = [...(status?.upstreams || []), ...(status?.userUpstreams || [])];
   const disabled = new Set(me?.disabledModules || []);
-  const go = modules.filter((m) => m.enabled && !disabled.has(m.name)).length;
-  const card = modules.filter((m) => m.enabled && disabled.has(m.name)).length + modules.filter((m) => !m.enabled).length;
+  const go =
+    modules.filter((m) => m.enabled && !disabled.has(m.name)).length +
+    upstreams.filter((u) => u.state === "connected").length;
+  const card = modules.length + upstreams.length - go;
 
   const goView = (v: ViewKey) => {
     navigate(v);
     setRailOpen(false);
   };
 
+  useEffect(() => {
+    if (!railOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRailOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [railOpen]);
+
+  const endpoint = mcpEndpoint();
+
   return (
     <div className="fd-frame">
-      <div className={`rail-scrim ${railOpen ? "is-open" : ""}`} onClick={() => setRailOpen(false)} aria-hidden />
-      <aside className={`fd-rail ${railOpen ? "is-open" : ""}`}>
+      <button
+        type="button"
+        className={`rail-scrim ${railOpen ? "is-open" : ""}`}
+        aria-label="Close navigation"
+        tabIndex={railOpen ? 0 : -1}
+        onClick={() => setRailOpen(false)}
+      />
+      <aside className={`fd-rail ${railOpen ? "is-open" : ""}`} aria-label="Workstation navigation">
         <div className="rail-mark">
           <span className="bolt-plate">
             <Zap size={15} strokeWidth={2.4} />
@@ -99,8 +119,8 @@ export function AppShellLayout({ children }: { children: React.ReactNode }) {
             <span className={`uplink-led ${status ? "" : "is-down"}`} aria-hidden />
             <div className="min-w-0">
               <div className="telemetry text-[10px] uppercase tracking-[0.16em] text-disabled">Uplink</div>
-              <div className="telemetry truncate text-[11.5px] text-primary" title={`${window.location.origin}/mcp`}>
-                {window.location.origin.replace(/^https?:\/\//, "")}/mcp
+              <div className="telemetry truncate text-[11.5px] text-primary" title={endpoint}>
+                {endpoint.replace(/^https?:\/\//, "")}
               </div>
             </div>
             <button type="button" className="btn-icon" title="Open the endpoint" aria-label="Open the MCP endpoint" onClick={() => window.open("/mcp", "_blank")}>

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Blocks, Briefcase, ChartColumn, Clock, Cloud, Code2, Cpu, Database, FileText,
   Folder, Gauge, GitBranch, Globe, Hash, Hexagon, Lightbulb, MessageCircle, Newspaper, Package,
@@ -15,7 +16,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   trend: TrendingUp,
 };
 
-function Tile({ sm = false, children }: { sm?: boolean; children: React.ReactNode }) {
+function Tile({ sm = false, children }: { sm?: boolean; children: ReactNode }) {
   return (
     <span
       className={`flex flex-none items-center justify-center rounded-md border border-border bg-surface text-secondary ${

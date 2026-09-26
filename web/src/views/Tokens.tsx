@@ -5,7 +5,7 @@ import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { copyText, createToken, errMsg, loadTokens, revokeToken } from "../lib/api";
 import { useStore } from "../lib/store";
-import { Btn, CopyBtn, Empty, useConfirm } from "../components/ui";
+import { Btn, Empty, useConfirm } from "../components/ui";
 
 export default function Tokens() {
   const { tokens, setTokens, toast } = useStore();
@@ -36,7 +36,7 @@ export default function Tokens() {
     if (!ok) return;
     try {
       await revokeToken(id);
-      setTokens(tokens.filter((t) => t.id !== id));
+      setTokens((prev) => prev.filter((t) => t.id !== id));
       toast("Token revoked");
     } catch (err) {
       toast(errMsg(err, "Revoke failed"));
@@ -71,7 +71,7 @@ export default function Tokens() {
         <section className="panel panel-success">
           <Heading level={4}>Copy this token — it won't be shown again</Heading>
           <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <code className="block flex-1 break-all rounded-[6px] border border-border bg-background-body p-3 font-mono text-sm text-primary">{newToken}</code>
+            <code className="block flex-1 break-all rounded-[6px] border border-border bg-body p-3 font-mono text-sm text-primary">{newToken}</code>
             <Btn variant="primary" icon={<KeyRound size={13} />} onClick={async () => { await copyText(newToken); toast("Token copied"); }}>Copy</Btn>
           </div>
         </section>
@@ -106,7 +106,6 @@ export default function Tokens() {
                 </Text>
               </div>
               <div className="flex flex-none flex-wrap gap-2">
-                <CopyBtn text={`Authorization: Bearer …${t.hint}`} label="Copy auth header" />
                 <Btn variant="danger" icon={<Trash2 size={12} />} onClick={() => revoke(t.id, t.name)}>Revoke</Btn>
               </div>
             </div>

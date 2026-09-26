@@ -177,7 +177,7 @@ export const CATEGORY_ICONS: Record<string, string> = {
   Utilities: "wrench", "Web & API": "globe", "Web & News": "news",
   "Knowledge & Memory": "chip", "Files & Data": "database", Development: "code",
   Productivity: "briefcase", Communication: "chat", "Finance & Crypto": "hex",
-  "Skills Hub": "bulb", Operations: "gauge",
+  "Skills Hub": "bulb", Operations: "gauge", Registry: "globe",
   // Skill categories (skills/*.md).
   Research: "search", Writing: "pen", DevOps: "package", Security: "shield",
   Data: "chart", General: "pin",
@@ -188,8 +188,9 @@ export const CATEGORY_ICONS: Record<string, string> = {
 };
 
 /* Options for the server form's Category select — the form-side bucket each
-   Directory category maps to via CATEGORY_MAP. Keep in display order. */
+   Directory category maps to via CATEGORY_MAP, plus "Registry" for servers
+   imported from the official registry. Keep in display order. */
 export const FORM_CATEGORIES = [
   "Development", "Data", "Productivity", "Communication", "Web & API",
-  "Finance & Crypto", "AI", "Other",
+  "Finance & Crypto", "AI", "Registry", "Other",
 ];

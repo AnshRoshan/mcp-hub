@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
@@ -41,7 +41,7 @@ export default function Directory() {
         </div>
       </div>
 
-      <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" aria-label="Directory categories">
+      <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Directory categories">
         <Filter active={category === "all"} onClick={() => setCategory("all")}>All <span>{catalogTotal()}</span></Filter>
         {categories.map((item) => <Filter key={item} active={category === item} onClick={() => setCategory(item)}>{item} <span>{MCP_CATALOG[item].length}</span></Filter>)}
       </div>
@@ -57,7 +57,7 @@ export default function Directory() {
                   <CategoryIcon name={block.category} />
                   {block.category}
                 </span>
-                <Text type="label" size="sm" className="text-tertiary">
+                <Text type="label" size="sm" className="text-disabled">
                   {block.entries.length} server{block.entries.length === 1 ? "" : "s"}
                 </Text>
               </div>
@@ -98,7 +98,7 @@ function RegistrySection() {
   const importServer = async (s: RegistryServer) => {
     setAdding(s.name);
     try {
-      await saveServer({ key: registryKey(s.name), type: "http", category: "Registry", env: {}, url: s.url });
+      await saveServer({ key: registryKey(s.name), type: "http", category: "Registry", url: s.url });
       await refreshServers();
       toast(`Added ${s.name} — connect on the Servers page`);
       navigate("servers");
@@ -116,7 +116,7 @@ function RegistrySection() {
           <CategoryIcon name="Registry" />
           Official MCP Registry
         </span>
-        <Text type="label" size="sm" className="text-tertiary">remote servers · live search</Text>
+        <Text type="label" size="sm" className="text-disabled">remote servers · live search</Text>
       </div>
       <form
         className="flex items-end gap-2"
@@ -163,15 +163,15 @@ function RegistrySection() {
   );
 }
 
-function Filter({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+function Filter({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
       aria-pressed={active}
-      className={`telemetry flex-none rounded-[6px] border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+      className={`telemetry flex-none rounded-[6px] border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] ${
         active
           ? "border-[color-mix(in_srgb,var(--fd-telemetry)_55%,transparent)] bg-[color-mix(in_srgb,var(--fd-telemetry)_12%,transparent)] text-[var(--fd-telemetry)]"
-          : "border-border bg-surface text-secondary hover:border-border-emphasized hover:text-primary"
+          : "border-border bg-surface text-secondary hover:border-border-strong hover:text-primary"
       }`}
       onClick={onClick}
     >

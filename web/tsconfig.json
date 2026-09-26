@@ -12,7 +12,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "useDefineForClassFields": true,
-    "types": ["vite/client"]
+    // vite/client for import.meta/env, node because `include` covers
+    // vite.config.ts, which imports node:path and reads import.meta.dirname.
+    "types": ["vite/client", "node"]
   },
   "include": ["src", "vite.config.ts"]
 }

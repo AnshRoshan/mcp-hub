@@ -46,8 +46,6 @@
   --fd-abort-deep: #33130f;
   --fd-telemetry: #4f8cff;
   --fd-telemetry-deep: #101c33;
-  --fd-ivory: #e9edf3;
-  --fd-ink: #0b0d12;
 }
 
 [data-theme="dark"] {
@@ -409,6 +407,9 @@ html {
 
 .rail-scrim {
   display: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 /* Hamburger plate — the rail's door on small screens */
@@ -887,11 +888,6 @@ html {
   border-color: var(--color-border-emphasized);
 }
 
-.module-card.is-off,
-.skill-card.is-off {
-  opacity: 1;
-}
-
 .module-card.is-off .module-card-body,
 .skill-card.is-off .skill-card-desc {
   color: var(--color-text-disabled);
@@ -1020,34 +1016,6 @@ html {
 
 .capability-row:hover {
   background: var(--fd-wash);
-}
-
-.capability-row.is-off {
-  opacity: 1;
-  background:
-    repeating-linear-gradient(-45deg, transparent 0 14px, var(--fd-hazard) 14px 16px),
-    transparent;
-}
-
-.capability-tools {
-  grid-column: 1 / -1;
-  margin: 0 -16px -16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background-body);
-  padding: 10px 16px 12px;
-}
-
-.capability-tool {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 10px;
-  border-radius: 6px;
-  padding: 4px 8px;
-}
-
-.capability-tool:hover {
-  background: var(--color-background-muted);
 }
 
 /* ================================================================
@@ -1193,12 +1161,6 @@ html {
   color: var(--fd-caution);
   border-color: color-mix(in srgb, var(--fd-caution) 45%, transparent);
   background: color-mix(in srgb, var(--fd-caution) 8%, transparent);
-}
-
-.flag-nogo {
-  color: var(--fd-abort);
-  border-color: color-mix(in srgb, var(--fd-abort) 50%, transparent);
-  background: color-mix(in srgb, var(--fd-abort) 9%, transparent);
 }
 
 .flag-off {
@@ -1408,11 +1370,16 @@ button {
     border-right: 1px solid var(--color-border-emphasized);
     box-shadow: 12px 0 40px var(--color-shadow);
     transform: translateX(-105%);
-    transition: transform 260ms var(--ease-expo);
+    /* Off-screen is not out of reach: hidden keeps the rail's buttons out of
+       the tab order while the drawer is shut. */
+    visibility: hidden;
+    transition: transform 260ms var(--ease-expo), visibility 0s linear 260ms;
   }
 
   .fd-rail.is-open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 260ms var(--ease-expo), visibility 0s;
   }
 
   .rail-scrim {
@@ -1429,6 +1396,11 @@ button {
   .rail-scrim.is-open {
     opacity: 1;
     pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .rail-scrim.is-open:active {
+    transform: none;
   }
 
   .btn-icon.rail-toggle {

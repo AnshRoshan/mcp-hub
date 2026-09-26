@@ -2,30 +2,36 @@ import { useState } from "react";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
-import { errMsg, putPrefs, type ModuleInfo } from "../lib/api";
+import { errMsg, putPrefs, type MeData, type ModuleInfo } from "../lib/api";
 import { MODULES } from "../lib/catalog";
 import { useStore } from "../lib/store";
-import { Badge, Btn, FdSwitch } from "../components/ui";
+import { Badge, Btn, Empty, FdSwitch } from "../components/ui";
 import { CategoryIcon, ModuleIcon } from "../components/icons";
 
 export default function Modules() {
-  const { status, me, setMe, navigate, toast } = useStore();
+  const { status, statusError, me, setMe, refreshMe, refreshStatus, navigate, toast } = useStore();
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const known = (status?.modules || []).filter((m) => MODULES[m.name]);
-  const sources: [string, ModuleInfo][] = known.length
-    ? known.map((m) => [m.name, m])
-    : Object.entries(MODULES).map(([name]) => [name, { name, enabled: true, tools: [], toolCount: 0 }]);
+  // Whatever the server reports — the local MODULES map is metadata (icon,
+  // description), never a visibility filter.
+  const sources: [string, ModuleInfo][] = (status?.modules || []).map((m) => [m.name, m]);
   const byCategory: Record<string, [string, ModuleInfo][]> = {};
   for (const [name, module] of sources) (byCategory[module.category || "Utilities"] = byCategory[module.category || "Utilities"] || []).push([name, module]);
   const disabledModules = new Set(me?.disabledModules || []);
   const disabledTools = new Set(me?.disabledTools || []);
+
+  // The PUT already succeeded; resync from the server when there is no local
+  // copy to patch, so a cold `me` never turns the write into a silent no-op.
+  const applyMe = (patch: Partial<MeData>) => {
+    if (me) setMe({ ...me, ...patch });
+    else void refreshMe();
+  };
 
   const toggleModule = async (name: string, enabled: boolean) => {
     const next = new Set(disabledModules);
     if (enabled) next.delete(name); else next.add(name);
     try {
       await putPrefs({ disabledModules: [...next] });
-      setMe(me ? { ...me, disabledModules: [...next] } : me);
+      applyMe({ disabledModules: [...next] });
     } catch (err) {
       toast(errMsg(err, "Update failed"));
     }
@@ -36,7 +42,7 @@ export default function Modules() {
     if (enabled) next.delete(tool); else next.add(tool);
     try {
       await putPrefs({ disabledTools: [...next] });
-      setMe(me ? { ...me, disabledTools: [...next] } : me);
+      applyMe({ disabledTools: [...next] });
     } catch (err) {
       toast(errMsg(err, "Update failed"));
     }
@@ -45,11 +51,20 @@ export default function Modules() {
   const toggleLite = async (checked: boolean) => {
     try {
       await putPrefs({ liteCatalog: checked });
-      setMe(me ? { ...me, liteCatalog: checked } : me);
+      applyMe({ liteCatalog: checked });
     } catch (err) {
       toast(errMsg(err, "Update failed"));
     }
   };
+
+  if (statusError) {
+    return (
+      <div className="flex flex-col gap-8">
+        <Empty title="Status unavailable">{statusError}</Empty>
+        <Btn variant="primary" onClick={() => void refreshStatus()}>Retry</Btn>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -82,6 +97,10 @@ export default function Modules() {
         </div>
       </div>
 
+      {sources.length === 0 && (
+        <Empty title="No modules reporting">The workstation returned no built-in modules.</Empty>
+      )}
+
       {Object.entries(byCategory).map(([category, modules]) => {
         const onCount = modules.filter(([name, module]) => module.enabled !== false && !disabledModules.has(name)).length;
         const totalTools = modules.reduce((sum, [, m]) => sum + (m.tools?.length || 0), 0);
@@ -92,7 +111,7 @@ export default function Modules() {
                 <CategoryIcon name={category} />
                 {category}
               </span>
-              <Text type="label" size="sm" className="text-tertiary">
+              <Text type="label" size="sm" className="text-disabled">
                 {onCount}/{modules.length} on · {totalTools} tools
               </Text>
             </div>
