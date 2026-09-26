@@ -1,17 +1,14 @@
 import { useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
 import { CodeBlock } from "@astryxdesign/core/CodeBlock";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { TabList, Tab } from "@astryxdesign/core/TabList";
 import { CLIENTS } from "../lib/catalog";
 import { mcpEndpoint } from "../lib/config";
 import { useStore } from "../lib/store";
-import { Kv, KvList } from "../components/ui";
+import { Btn, Kv, KvList, TabRail } from "../components/ui";
 
 export default function Connect() {
   const { navigate } = useStore();
-  const [active, setActive] = useState(CLIENTS[0].id);
+  const [active, setActive] = useState<string>(CLIENTS[0].id);
   const mcp = mcpEndpoint();
   const client = CLIENTS.find((c) => c.id === active) || CLIENTS[0];
   const cfg = client.build(mcp);
@@ -27,20 +24,20 @@ export default function Connect() {
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4.5 xl:grid-cols-[340px_1fr]">
-        <Card padding={5}>
+        <section className="panel">
           <Heading level={4}>Quick start</Heading>
           <ol className="m-0 mt-4 flex list-none flex-col gap-3 p-0">
             <Step n={1}>
               <Text weight="semibold">Add servers</Text>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <Button label="Servers" variant="ghost" size="sm" onClick={() => navigate("servers")} />
-                <Button label="Modules" variant="ghost" size="sm" onClick={() => navigate("modules")} />
+              <div className="mt-1.5 flex flex-wrap gap-3">
+                <Btn variant="link" onClick={() => navigate("servers")}>Servers</Btn>
+                <Btn variant="link" onClick={() => navigate("modules")}>Modules</Btn>
               </div>
             </Step>
             <Step n={2}>
               <Text weight="semibold">Create a token</Text>
               <div className="mt-1.5">
-                <Button label="Tokens" variant="ghost" size="sm" onClick={() => navigate("tokens")} />
+                <Btn variant="link" onClick={() => navigate("tokens")}>Tokens</Btn>
               </div>
             </Step>
             <Step n={3}>
@@ -50,17 +47,15 @@ export default function Connect() {
             </Step>
           </ol>
 
-          <div className="mt-5 rounded-lg border border-border bg-surface p-3">
+          <div className="mt-5 rounded-[4px] border border-border bg-surface p-3">
             <Text type="supporting" size="sm">
-              <strong className="text-primary">stdio</strong> runs locally · <strong className="text-primary">HTTP</strong> points at a remote endpoint
+              <strong className="telemetry text-primary">stdio</strong> runs locally · <strong className="telemetry text-primary">HTTP</strong> points at a remote endpoint
             </Text>
           </div>
-        </Card>
+        </section>
 
-        <Card padding={5}>
-          <TabList value={active} onChange={setActive} hasDivider size="sm" layout="fill">
-            {CLIENTS.map((c) => <Tab key={c.id} value={c.id} label={c.name} />)}
-          </TabList>
+        <section className="panel">
+          <TabRail items={CLIENTS.map((c) => ({ id: c.id, label: c.name }))} value={active} onChange={setActive} />
 
           <div key={client.id} className="mt-4">
             <div className="mb-4">
@@ -74,10 +69,10 @@ export default function Connect() {
 
             <Text type="supporting" size="sm" className="mt-3">
               No token yet?{" "}
-              <Button label="Create one" variant="ghost" size="sm" onClick={() => navigate("tokens")} />.
+              <Btn variant="link" onClick={() => navigate("tokens")}>Create one</Btn>.
             </Text>
           </div>
-        </Card>
+        </section>
       </div>
     </div>
   );

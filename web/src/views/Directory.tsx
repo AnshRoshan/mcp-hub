@@ -1,7 +1,4 @@
 import { useMemo, useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { Icon } from "@astryxdesign/core/Icon";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
@@ -9,7 +6,7 @@ import { Globe, Plus, Search } from "lucide-react";
 import { MCP_CATALOG, catalogTotal, type CatalogEntry } from "../lib/catalog";
 import { errMsg, registryKey, saveServer, searchRegistry, type RegistryServer } from "../lib/api";
 import { useStore } from "../lib/store";
-import { CopyBtn, Tag } from "../components/ui";
+import { Btn, CopyBtn, Empty, Tag } from "../components/ui";
 import { catalogIcon, CategoryIcon } from "../components/icons";
 
 export default function Directory() {
@@ -50,7 +47,7 @@ export default function Directory() {
       </div>
 
       {blocks.length === 0 ? (
-        <EmptyState title="No servers match" description={`Nothing matches "${query}" — try another term.`} icon={<Icon icon={Search} size="lg" />} actions={<Button label="Browse modules" variant="secondary" onClick={() => navigate("modules")} />} />
+        <Empty title="No servers match">{`Nothing matches "${query}" — try another term.`}</Empty>
       ) : (
         <div className="flex flex-col gap-8">
           {blocks.map((block) => (
@@ -134,7 +131,7 @@ function RegistrySection() {
             onChange={setTerm}
           />
         </div>
-        <Button label={busy ? "Searching…" : "Search"} variant="secondary" size="sm" type="submit" isDisabled={busy || !term.trim()} />
+        <Btn variant="plate" type="submit" disabled={busy || !term.trim()}>{busy ? "Searching…" : "Search"}</Btn>
       </form>
       {results !== null && (
         results.length === 0 ? (
@@ -153,14 +150,9 @@ function RegistrySection() {
                   <code className="mt-1 block truncate font-mono text-xs text-secondary" title={s.url}>{s.url}</code>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button
-                    label={adding === s.name ? "Adding…" : "Add"}
-                    variant="primary"
-                    size="sm"
-                    icon={<Plus size={14} strokeWidth={2.6} />}
-                    isDisabled={adding !== null}
-                    onClick={() => void importServer(s)}
-                  />
+                  <Btn variant="primary" icon={<Plus size={13} strokeWidth={2.6} />} disabled={adding !== null} onClick={() => void importServer(s)}>
+                    {adding === s.name ? "Adding…" : "Add"}
+                  </Btn>
                 </div>
               </article>
             ))}
@@ -172,14 +164,27 @@ function RegistrySection() {
 }
 
 function Filter({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return <button type="button" className={`flex-none rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${active ? "border-primary bg-primary text-white" : "border-border bg-surface text-secondary hover:border-border-emphasized hover:text-primary"}`} onClick={onClick}>{children}</button>;
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={`telemetry flex-none rounded-[3px] border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+        active
+          ? "border-[color-mix(in_srgb,var(--fd-caution)_55%,transparent)] bg-[color-mix(in_srgb,var(--fd-caution)_12%,transparent)] text-[var(--fd-caution)]"
+          : "border-border bg-surface text-secondary hover:border-border-emphasized hover:text-primary"
+      }`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
 }
 
 function DirectoryRow({ entry, onAdd }: { entry: CatalogEntry; onAdd: () => void }) {
   const ServerIcon = catalogIcon(entry.name);
   return (
     <article className="directory-row">
-      <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-body text-secondary">
+      <span className="flex h-10 w-10 items-center justify-center rounded-[6px] border border-border bg-body text-secondary">
         <ServerIcon size={18} strokeWidth={1.9} />
       </span>
       <div className="min-w-0">
@@ -198,7 +203,7 @@ function DirectoryRow({ entry, onAdd }: { entry: CatalogEntry; onAdd: () => void
       </div>
       <div className="flex items-center gap-1.5">
         <CopyBtn text={entry.cmd} label="" />
-        <Button label="Add" variant="primary" size="sm" icon={<Plus size={14} strokeWidth={2.6} />} onClick={onAdd} />
+        <Btn variant="primary" icon={<Plus size={13} strokeWidth={2.6} />} onClick={onAdd}>Add</Btn>
       </div>
     </article>
   );

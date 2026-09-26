@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Icon } from "@astryxdesign/core/Icon";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { useToast } from "@astryxdesign/core/Toast";
-import { Check, Copy, Inbox } from "lucide-react";
+import { Check, Copy, Radio } from "lucide-react";
 import { copyText } from "../lib/api";
 import { useStore } from "../lib/store";
 
@@ -80,7 +79,7 @@ export function CopyBtn({ text, label = "Copy", className = "" }: { text: string
   return (
     <button
       type="button"
-      className={`inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-secondary transition-colors hover:border-border-emphasized hover:text-primary ${className}`}
+      className={`btn-icon ${copied ? "is-copied" : ""} ${className}`}
       onClick={async () => {
         await copyText(text);
         setCopied(true);
@@ -88,20 +87,79 @@ export function CopyBtn({ text, label = "Copy", className = "" }: { text: string
       }}
     >
       <Icon icon={copied ? Check : Copy} size="xsm" color={copied ? "success" : "secondary"} />
-      {copied ? "Copied" : label}
+      {label && <span className="telemetry text-[10.5px] uppercase tracking-[0.12em]">{copied ? "Copied" : label}</span>}
     </button>
   );
 }
 
-/* ---------- Empty state ---------- */
+/* ---------- Machined controls: the Flight Dynamics substrate ---------- */
+
+type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "plate" | "link" | "danger";
+  icon?: ReactNode;
+};
+
+export function Btn({ variant = "plate", icon, className = "", children, ...rest }: BtnProps) {
+  return (
+    <button type="button" className={`btn btn-${variant} ${className}`} {...rest}>
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+/** Square detent switch — two positions, no pill anywhere. */
+export function FdSwitch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`fd-switch ${checked ? "is-on" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="fd-knob" aria-hidden />
+    </button>
+  );
+}
+
+/** Detent tab rail — active plate carries a top telemetry bar. */
+export function TabRail<T extends string>({ items, value, onChange }: {
+  items: { id: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="tab-rail" role="tablist" aria-label="Client targets">
+      {items.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={value === t.id}
+          className={`tab-plate ${value === t.id ? "is-active" : ""}`}
+          onClick={() => onChange(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Cold-instrument empty state ---------- */
 
 export function Empty({ title = "Nothing here yet", children }: { title?: string; children: string }) {
   return (
-    <EmptyState
-      title={title}
-      description={children}
-      icon={<Icon icon={Inbox} size="lg" />}
-    />
+    <div className="cold-instrument">
+      <span className="cold-flag">
+        <Icon icon={Radio} size="xsm" />
+        No signal
+      </span>
+      <div className="cold-title">{title}</div>
+      <p className="cold-copy">{children}</p>
+    </div>
   );
 }
 

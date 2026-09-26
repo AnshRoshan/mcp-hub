@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Switch } from "@astryxdesign/core/Switch";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { deleteServer, errMsg, parseHeaders, parseKV, saveServer, toggleServer, type ServerBody, type ServerRow } from "../lib/api";
 import { CATEGORY_MAP, FORM_CATEGORIES } from "../lib/catalog";
 import { useStore } from "../lib/store";
-import { Badge, Empty, useConfirm } from "../components/ui";
+import { Badge, Btn, Empty, FdSwitch, useConfirm } from "../components/ui";
 
 const selectCls =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-primary focus:border-blue-ring focus:outline-none";
+  "w-full rounded-[4px] border border-border-emphasized bg-background-body px-3 py-2 text-sm text-primary focus:outline-2 focus:outline-[var(--fd-telemetry)]";
 
 interface ServerForm {
   key: string;
@@ -158,17 +155,19 @@ export default function Servers() {
             Register MCP servers (stdio or HTTP). Tools are namespaced into your endpoint.
           </Text>
         </div>
-        <Button label="Add server" variant="primary" icon={<Plus size={15} strokeWidth={2.4} />} onClick={openNew} />
+        <Btn variant="primary" icon={<Plus size={13} strokeWidth={2.4} />} onClick={openNew}>Add server</Btn>
       </div>
 
       <div ref={formTop} />
       {editing && (
-        <Card padding={5}>
+        <section className="panel">
           <div className="mb-2 flex items-center justify-between">
             <Heading level={4}>
               {editing === "new" ? (draft ? `Add ${draft.key}` : "Add server") : `Edit ${(editing as ServerRow).key}`}
             </Heading>
-            <Button label="Close" variant="ghost" size="sm" isIconOnly icon={<X size={15} />} onClick={close} />
+            <button type="button" className="btn-icon" aria-label="Close" onClick={close}>
+              <X size={15} />
+            </button>
           </div>
           <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextInput
@@ -212,11 +211,11 @@ export default function Servers() {
               </div>
             )}
             <div className="mt-2 flex justify-end gap-2.5 md:col-span-2">
-              <Button label="Cancel" variant="ghost" onClick={close} />
-              <Button label="Save" variant="primary" type="submit" />
+              <Btn variant="plate" onClick={close}>Cancel</Btn>
+              <Btn variant="primary" type="submit">Save</Btn>
             </div>
           </form>
-        </Card>
+        </section>
       )}
 
       {servers.length === 0 ? (
@@ -226,7 +225,7 @@ export default function Servers() {
           {servers.map((s) => (
             <div key={s.id} className="capability-row">
               <div className="flex items-center gap-3.5">
-                <Switch label={s.key} value={s.enabled} onChange={(v) => onToggle(s, v)} />
+                <FdSwitch label={s.key} checked={s.enabled} onChange={(v) => onToggle(s, v)} />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                     <span className="text-primary">{s.key}</span>
@@ -237,8 +236,8 @@ export default function Servers() {
                 </div>
               </div>
               <div className="flex flex-none gap-2">
-                <Button label="Edit" variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(s)} />
-                <Button label="Delete" variant="ghost" size="sm" icon={<Trash2 size={13} />} className="!text-red-vivid hover:!border-red-ring" onClick={() => onDelete(s)} />
+                <Btn variant="plate" icon={<Pencil size={12} />} onClick={() => openEdit(s)}>Edit</Btn>
+                <Btn variant="danger" icon={<Trash2 size={12} />} onClick={() => onDelete(s)}>Delete</Btn>
               </div>
             </div>
           ))}

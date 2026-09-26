@@ -1,7 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Divider } from "@astryxdesign/core/Divider";
 import { Text } from "@astryxdesign/core/Text";
@@ -10,6 +8,7 @@ import { Heading } from "@astryxdesign/core/Text";
 import { Zap } from "lucide-react";
 import { emailSignIn, errMsg, getAuthConfig, socialSignIn, type AuthConfig } from "../lib/api";
 import { useStore } from "../lib/store";
+import { Btn } from "../components/ui";
 
 function GoogleMark() {
   return (
@@ -72,9 +71,9 @@ export default function AuthView() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-5">
-      <Card padding={8} elevation="med" className="w-full max-w-[420px]">
+      <section className="panel w-full max-w-[420px] p-8">
         <div className="flex flex-col items-center text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface">
+          <span className="flex h-14 w-14 items-center justify-center rounded-[6px] border border-border bg-surface">
             <Zap size={30} strokeWidth={2.2} className="text-primary" />
           </span>
           <Heading level={2} className="mt-5">
@@ -87,24 +86,14 @@ export default function AuthView() {
 
         <div className="mt-6 flex flex-col gap-2.5">
           {googleOn && (
-            <Button
-              label={busy === "google" ? "Redirecting…" : "Continue with Google"}
-              variant="secondary"
-              icon={<GoogleMark />}
-              width="100%"
-              isDisabled={busy !== null}
-              onClick={() => onSocial("google")}
-            />
+            <Btn variant="plate" className="w-full" icon={<GoogleMark />} disabled={busy !== null} onClick={() => onSocial("google")}>
+              {busy === "google" ? "Redirecting…" : "Continue with Google"}
+            </Btn>
           )}
           {githubOn && (
-            <Button
-              label={busy === "github" ? "Redirecting…" : "Continue with GitHub"}
-              variant="secondary"
-              icon={<GitHubMark />}
-              width="100%"
-              isDisabled={busy !== null}
-              onClick={() => onSocial("github")}
-            />
+            <Btn variant="plate" className="w-full" icon={<GitHubMark />} disabled={busy !== null} onClick={() => onSocial("github")}>
+              {busy === "github" ? "Redirecting…" : "Continue with GitHub"}
+            </Btn>
           )}
 
           {emailOn && anySocial && <Divider label="or" />}
@@ -129,14 +118,9 @@ export default function AuthView() {
               value={password}
               onChange={setPassword}
             />
-            <Button
-              label={busy === "email" ? "Working…" : "Sign in / Sign up"}
-              variant="primary"
-              type="submit"
-              width="100%"
-              isLoading={busy === "email"}
-              isDisabled={busy !== null && busy !== "email"}
-            />
+            <Btn variant="primary" className="w-full" type="submit" disabled={busy !== null && busy !== "email"}>
+              {busy === "email" ? "Working…" : "Sign in / Sign up"}
+            </Btn>
           </form>
           )}
         </div>
@@ -190,7 +174,7 @@ export default function AuthView() {
             </li>
           </ul>
         </Collapsible>
-      </Card>
+      </section>
     </div>
   );
 }

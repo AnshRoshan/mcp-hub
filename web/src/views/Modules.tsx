@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { Heading, Text } from "@astryxdesign/core/Text";
-import { Switch } from "@astryxdesign/core/Switch";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { errMsg, putPrefs, type ModuleInfo } from "../lib/api";
 import { MODULES } from "../lib/catalog";
 import { useStore } from "../lib/store";
-import { Badge } from "../components/ui";
+import { Badge, Btn, FdSwitch } from "../components/ui";
 import { CategoryIcon, ModuleIcon } from "../components/icons";
 
 export default function Modules() {
@@ -62,7 +60,7 @@ export default function Modules() {
             Enable integrations or fine-tune access per tool. Changes apply to your endpoint.
           </Text>
         </div>
-        <Button label="Browse directory" variant="secondary" size="sm" icon={<ExternalLink size={13} />} onClick={() => navigate("directory")} />
+        <Btn variant="plate" icon={<ExternalLink size={13} />} onClick={() => navigate("directory")}>Browse directory</Btn>
       </div>
 
       <div className="capability-list">
@@ -79,7 +77,7 @@ export default function Modules() {
             </Text>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <Switch label="Lite catalog" isLabelHidden value={Boolean(me?.liteCatalog)} onChange={toggleLite} />
+            <FdSwitch label="Lite catalog" checked={Boolean(me?.liteCatalog)} onChange={toggleLite} />
           </div>
         </div>
       </div>
@@ -127,7 +125,7 @@ export default function Modules() {
                         </div>
                         <Text type="supporting" size="sm" className="module-card-desc">{meta.desc}</Text>
                       </div>
-                      <Switch label={name} isLabelHidden value={enabled} onChange={(v) => toggleModule(name, v)} />
+                      <FdSwitch label={name} checked={enabled} onChange={(v) => toggleModule(name, v)} />
                     </div>
 
                     <div className="module-card-meta">
@@ -150,7 +148,7 @@ export default function Modules() {
                             {tools.map((tool) => (
                               <div key={tool} className="module-card-tool-row">
                                 <code className="module-card-tool-name">{tool}</code>
-                                <Switch label={tool} isLabelHidden size="sm" value={!disabledTools.has(tool)} onChange={(v) => toggleTool(tool, v)} />
+                                <FdSwitch label={tool} checked={!disabledTools.has(tool)} onChange={(v) => toggleTool(tool, v)} />
                               </div>
                             ))}
                           </div>
