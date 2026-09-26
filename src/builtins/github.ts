@@ -37,7 +37,8 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
   }
 
   const pagination = (args: Record<string, unknown>): Record<string, string> => ({
-    per_page: String(num(args.per_page, 30)),
+    per_page: String(Math.min(Math.max(Math.round(num(args.per_page, 30)), 1), 100)),
+    page: String(Math.max(Math.round(num(args.page, 1)), 1)),
   });
 
   /** owner+repo (required) with an optional per_page knob — shared by paginated repo list tools. */
@@ -47,6 +48,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       owner: { type: "string" },
       repo: { type: "string" },
       per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
     },
     required: ["owner", "repo"],
   };
@@ -103,6 +105,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: {
           username: { type: "string" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
           sort: { type: "string", enum: ["created", "updated", "pushed", "full_name"] },
         },
       },
@@ -118,7 +121,8 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       description: "Search GitHub repositories by query (e.g. \"mcp server language:typescript stars:>100\").",
       inputSchema: {
         type: "object",
-        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 } },
+        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 },
+          page: { type: "integer", minimum: 1, description: "Result page (default 1)" } },
         required: ["query"],
       },
       handler: (args) => gh(`/search/repositories${q({ q: str(args.query), ...pagination(args) })}`).then(jsonResult),
@@ -134,6 +138,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           state: { type: "string", enum: ["open", "closed", "all"] },
           labels: { type: "string", description: "Comma-separated label names" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
@@ -239,6 +244,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           issue_number: { type: "integer" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo", "issue_number"],
       },
@@ -250,7 +256,8 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       description: "Search issues and pull requests across GitHub (query syntax: repo:, label:, is:pr, …).",
       inputSchema: {
         type: "object",
-        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 } },
+        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 },
+          page: { type: "integer", minimum: 1, description: "Result page (default 1)" } },
         required: ["query"],
       },
       handler: (args) => gh(`/search/issues${q({ q: str(args.query), ...pagination(args) })}`).then(jsonResult),
@@ -265,6 +272,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           state: { type: "string", enum: ["open", "closed", "all"] },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
@@ -449,6 +457,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           branch: { type: "string", description: "Branch or SHA (optional)" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
@@ -531,6 +540,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           branch: { type: "string" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
