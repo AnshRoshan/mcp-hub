@@ -10,13 +10,21 @@ const MEMORY_FILE = env("MEMORY_FILE")
 
 type Store = Record<string, string>;
 
-let store: Store = {};
+// Prototype-less: with a plain object, `memory_set("__proto__", ...)` would
+// write onto the shared prototype chain instead of storing an entry.
+let store: Store = Object.create(null) as Store;
 function load(): void {
   try {
     if (fs.existsSync(MEMORY_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(MEMORY_FILE, "utf-8"));
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        store = parsed as Store;
+        // Rebuild through the string filter: a hand-edited file with non-string
+        // values would otherwise blow up memory_search's .toLowerCase() calls.
+        const clean = Object.create(null) as Store;
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof v === "string") clean[k] = v;
+        }
+        store = clean;
       }
     }
   } catch (err) {
@@ -111,7 +119,7 @@ export const memoryDefs: ToolDef[] = [
     description: "Wipe all entries from memory.",
     inputSchema: { type: "object", properties: {} },
     handler: () => {
-      store = {};
+      store = Object.create(null) as Store;
       save();
       return textResult("Memory cleared.");
     },

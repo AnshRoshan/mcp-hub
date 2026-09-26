@@ -207,7 +207,7 @@ live number and the reason for each disabled module):
 | `devkit` | `regex_test`, `text_diff`, `cron_parse`, `json_query`, `color_contrast` — offline developer utilities, no network | always |
 | `youtube` | `yt_video_info` — a video's title, channel and thumbnail via YouTube oEmbed | always (no API key) |
 | `skills` | `skills_list`, `skills_get` — pull your enabled skills' instructions over MCP | always (per-user enabled set from `skills/*.md`) |
-| `workstation` | `workstation_status`, `workstation_reload` | always |
+| `workstation` | `workstation_status` always; `workstation_reload` in single-user mode only (it reconnects every shared upstream, so platform-mode tenants cannot call it) | always |
 
 > GitHub and Jira both support **enterprise/self-hosted instances** via `GITHUB_API_URL`
 > and `JIRA_BASE_URL`. Jira accepts an API token (Basic auth with `JIRA_EMAIL`) or a PAT.
@@ -226,7 +226,7 @@ lists only five Tier-0 tools and keeps everything else fully reachable behind th
 | `hub_search_tools` | BM25 search over the whole hidden catalog (name + description + module synonyms) |
 | `hub_get_tool` | fetch the exact input schema of any catalog tool |
 | `hub_call` | invoke any catalog tool by name — rate limits and audit apply identically |
-| `workstation_status` / `workstation_reload` | introspection + reload |
+| `workstation_status` / `workstation_reload` | introspection + reload (reload: single-user mode only) |
 
 Toggle per user on the dashboard (**Modules & Tools → Lite catalog**) or via
 `PUT /api/prefs {"liteCatalog":false}` for clients that want the full static
@@ -309,9 +309,11 @@ into its own list, prefixed with the server's `key`.
 - Upstream **tools and resources** are both merged in. Prompts are not proxied.
 - These operator-owned entries always start — `STDIO_ALLOWED_COMMANDS` only gates
   servers that *users* register from the dashboard.
-- After editing `servers.json`, call the `workstation_reload` tool — because every HTTP
-  request builds a fresh tool catalog from the live registry, the new tools appear on the
-  very next `tools/list`.
+- After editing `servers.json`, restart the process to pick it up. In single-user
+  mode the `workstation_reload` tool does it in place — because every HTTP request
+  builds a fresh tool catalog from the live registry, the new tools appear on the
+  very next `tools/list`. In platform mode that tool is withheld, since reloading
+  would disconnect every other tenant's shared upstreams.
 
 ## Operations
 
@@ -320,8 +322,8 @@ into its own list, prefixed with the server's `key`.
   description-quality score, and the rate-limit / audit / health-check settings. It
   reports the assembled catalog of *the caller*, so in platform mode it is a per-user
   view.
-- **`workstation_reload`** — re-reads `servers.json`, reconnects upstreams, refreshes the
-  tool list.
+- **`workstation_reload`** (single-user mode only) — re-reads `servers.json`,
+  reconnects upstreams, refreshes the tool list.
 - Endpoint path and port are configurable: `MCP_PATH` (default `/mcp`), `PORT` (default `3125`).
 
 ## Security notes

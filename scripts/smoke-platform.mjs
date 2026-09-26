@@ -318,8 +318,11 @@ async function main() {
     await sleep(300);
     const listLite = await mcp("tools/list", token);
     const liteNames = (listLite?.tools ?? []).map((t) => t.name).sort();
-    const TIER0 = ["hub_call", "hub_get_tool", "hub_search_tools", "workstation_reload", "workstation_status"];
+    const TIER0 = ["hub_call", "hub_get_tool", "hub_search_tools", "workstation_status"];
     check("lite mode lists ONLY the Tier-0 hub tools", liteNames.join(",") === TIER0.join(","), liteNames.join(","));
+    // Reload reconnects/disconnects every SHARED upstream, so it must not be
+    // callable by an individual tenant.
+    check("workstation_reload is withheld from platform-mode users", !liteNames.includes("workstation_reload"));
 
     const stLite = await statusOf(token);
     check("status reports catalogMode lite + full totalTools", stLite.catalogMode === "lite" && stLite.totalTools > 50, `${stLite.totalTools} total`);
@@ -468,7 +471,7 @@ async function main() {
     const bobToken = await mintToken(bobCookie, "bob-claude");
     const listB0 = await mcp("tools/list", bobToken);
     const bobLiteNames = (listB0?.tools ?? []).map((t) => t.name);
-    check("new users default to the lite catalog", bobLiteNames.includes("hub_search_tools") && bobLiteNames.length === 5);
+    check("new users default to the lite catalog", bobLiteNames.includes("hub_search_tools") && bobLiteNames.length === 4, bobLiteNames.join(","));
     await api("/api/prefs", { cookie: bobCookie, method: "PUT", body: { liteCatalog: false } });
     const listB = await mcp("tools/list", bobToken);
     const bobNames = (listB?.tools ?? []).map((t) => t.name);
