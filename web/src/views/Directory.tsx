@@ -168,9 +168,9 @@ function Filter({ active, children, onClick }: { active: boolean; children: Reac
     <button
       type="button"
       aria-pressed={active}
-      className={`telemetry flex-none rounded-[3px] border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+      className={`telemetry flex-none rounded-[6px] border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors ${
         active
-          ? "border-[color-mix(in_srgb,var(--fd-caution)_55%,transparent)] bg-[color-mix(in_srgb,var(--fd-caution)_12%,transparent)] text-[var(--fd-caution)]"
+          ? "border-[color-mix(in_srgb,var(--fd-telemetry)_55%,transparent)] bg-[color-mix(in_srgb,var(--fd-telemetry)_12%,transparent)] text-[var(--fd-telemetry)]"
           : "border-border bg-surface text-secondary hover:border-border-emphasized hover:text-primary"
       }`}
       onClick={onClick}
@@ -184,7 +184,7 @@ function DirectoryRow({ entry, onAdd }: { entry: CatalogEntry; onAdd: () => void
   const ServerIcon = catalogIcon(entry.name);
   return (
     <article className="directory-row">
-      <span className="flex h-10 w-10 items-center justify-center rounded-[6px] border border-border bg-body text-secondary">
+      <span className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-border bg-body text-secondary">
         <ServerIcon size={18} strokeWidth={1.9} />
       </span>
       <div className="min-w-0">

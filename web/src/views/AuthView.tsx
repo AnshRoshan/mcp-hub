@@ -73,7 +73,7 @@ export default function AuthView() {
     <div className="flex min-h-dvh items-center justify-center p-5">
       <section className="panel w-full max-w-[420px] p-8">
         <div className="flex flex-col items-center text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-[6px] border border-border bg-surface">
+          <span className="flex h-14 w-14 items-center justify-center rounded-[10px] border border-border bg-surface">
             <Zap size={30} strokeWidth={2.2} className="text-primary" />
           </span>
           <Heading level={2} className="mt-5">

@@ -166,7 +166,7 @@ function Tile({ label, value, unit, lit, tone = "telemetry" }: {
 function Step({ n, text, action, done }: { n: number; text: ReactNode; action?: ReactNode; done?: boolean }) {
   return (
     <li className="quick-step">
-      <span className={`telemetry flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[4px] border text-[11px] font-bold ${done ? "flag-go" : "border-border text-secondary"}`}>
+      <span className={`telemetry flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[6px] border text-[11px] font-bold ${done ? "flag-go" : "border-border text-secondary"}`}>
         {n}
       </span>
       <span className="min-w-0 flex-1 text-sm text-secondary">{text}</span>

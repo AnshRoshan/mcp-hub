@@ -9,7 +9,7 @@ import { useStore } from "../lib/store";
 import { Badge, Btn, Empty, FdSwitch, useConfirm } from "../components/ui";
 
 const selectCls =
-  "w-full rounded-[4px] border border-border-emphasized bg-background-body px-3 py-2 text-sm text-primary focus:outline-2 focus:outline-[var(--fd-telemetry)]";
+  "w-full rounded-[6px] border border-border-emphasized bg-background-body px-3 py-2 text-sm text-primary focus:outline-2 focus:outline-[var(--fd-telemetry)]";
 
 interface ServerForm {
   key: string;
