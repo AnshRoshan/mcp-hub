@@ -118,9 +118,11 @@ set in views with Tailwind steps. Uppercase tracking is restrained: 0.06–0.12e
 - **Uplink LED** — breathing emerald dot = endpoint linked; static red = down.
 - **Pre-flight steps** — 6px number plates that stamp emerald when done, with an `n / 3 COMPLETE` chip on the panel.
 - **DAY/NIGHT control** — strip selector switching the register.
-- Astryx remains substrate only for overlays and composites (DropdownMenu, Dialog,
-  Tooltip, Toast, TextInput/TextArea, CodeBlock, Avatar, MetadataList),
-  re-tuned through `--color-*` token overrides.
+- Astryx remains substrate only for overlays, composites and text primitives (`Text`,
+  `Icon`, `Divider`, `Banner`, `AlertDialog`, `Dialog`, `Collapsible`, `DropdownMenu`,
+  `Tooltip`, `Toast`, `TextInput`/`TextArea`, `CodeBlock`, `Avatar`, `MetadataList`),
+  re-tuned through `--color-*` token overrides. Astryx `Button`, `Switch`, `TabList` and
+  `Card` are not imported anywhere in `web/src`.
 
 ## Motion
 

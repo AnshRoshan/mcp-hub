@@ -10,6 +10,8 @@ MCP servers, namespaced so nothing collides — with optional **multi-user auth*
    MCP client ─────▶│  node:http                                            │
    (with Bearer     │   /api/auth/*  → Better Auth (Google/GitHub, cookies)  │
     token)          │   /api/*       → dashboard REST (servers, tokens, prefs)│
+                    │   /oauth/*, /register, /.well-known/*                   │
+                    │              → OAuth 2.1 AS + protected-resource meta   │
                     │   /            → static dashboard UI (public/)          │
                     │   /mcp         → requireBearerAuth → createMcpHandler   │
                     │        │         (legacy SSE bridge for old clients)    │
@@ -57,7 +59,10 @@ That shapes this codebase:
 Platform mode turns on when `BETTER_AUTH_SECRET` is set. `src/index.ts` then builds:
 
 - **`PlatformDb`** (`src/platform/db.ts`) — one SQLite file (`data/platform.db`)
-  holding both the Better Auth tables and the app tables. The auth tables are
+  holding both the Better Auth tables and the app tables (`servers`, API tokens,
+  per-user prefs, per-user builtin secrets, `oauth_clients`, and the `usage_events`
+  rollup behind `GET /api/usage` — per-user tool-call counts, latency and failures,
+  pruned to a 90-day window). The auth tables are
   **derived from Better Auth's own `getSchema()`** at startup, so they stay in
   sync with the installed version — no hand-written migrations.
 - **`createAuth`** (`src/platform/auth.ts`) — Better Auth bound to the same SQLite
@@ -68,16 +73,64 @@ Platform mode turns on when `BETTER_AUTH_SECRET` is set. `src/index.ts` then bui
   `OAuthTokenVerifier` consumed by the SDK's `requireBearerAuth`.
 - **Auth discovery** (`src/http.ts`) — `GET /.well-known/oauth-protected-resource`
   (RFC 9728, both plain and path-suffixed forms) describes the `/mcp` resource,
-  and every 401 challenge carries `resource_metadata="…"` so conformant MCP
-  clients can bootstrap discovery. `authorization_servers` is intentionally
-  absent until a real OAuth authorization server ships (see the research
-  report's S2 remaining work).
+  and in platform mode it advertises `authorization_servers: [<origin>]` — i.e.
+  itself. Every 401 challenge carries `resource_metadata="…"` so conformant MCP
+  clients can bootstrap discovery from the resource document straight to the
+  authorization server.
 - **REST API** (`src/platform/api.ts`) — session-aware CRUD: a user's servers
   (stdio/http, with env/headers **AES-256-GCM encrypted** at rest via
-  `src/platform/crypto.ts`), API tokens, module preferences, and per-user
+  `src/platform/crypto.ts`; stdio commands must pass the allowlist described
+  below), API tokens, module preferences, and per-user
   builtin credentials (`/api/secrets` — names readable, values write-only).
   Row↔runtime translation lives in `src/platform/serverConfig.ts` so neither
   the core nor the API layer depends on the other.
+
+### OAuth 2.1 authorization server (`src/platform/oauth.ts`)
+
+Platform mode ships a real authorization server for `/mcp`, mounted in `src/http.ts`
+alongside the REST API:
+
+| Route | What it does |
+|---|---|
+| `GET /.well-known/oauth-authorization-server` | AS metadata: issuer, authorization/token/registration endpoints, `response_types=["code"]`, `grant_types=["authorization_code"]`, `code_challenge_methods=["S256"]`, `token_endpoint_auth_methods=["none"]` |
+| `POST /register` | RFC 7591 dynamic client registration — a public client posts `redirect_uris`, gets a UUID `client_id`, persisted in the `oauth_clients` table |
+| `GET /oauth/authorize` | Session-gated. Not signed in → 302 to the dashboard with the flow parked (`?authorize_return=…`). Signed in → HTML consent screen naming the client |
+| `POST /oauth/authorize` | Consent decision + nonce; the session is re-checked at POST time, so a stolen nonce alone mints nothing |
+| `POST /oauth/token` | `authorization_code` + `code_verifier` → an `mcw_` bearer token |
+
+Deliberate constraints, all enforced in code:
+
+- **PKCE S256 only** — `code_challenge_method=plain` and a missing challenge are
+  rejected; the redirect URI must match the client's *registered* set exactly
+  (whole-string compare, no prefix/wildcard), and only `https` or loopback `http`
+  redirects are accepted (RFC 8252).
+- **Single-use, in-memory, short-lived** — consent nonces live 10 min, codes 5 min,
+  and both are deleted on consumption *and* on failure, so a replayed code is
+  `invalid_grant`. Nothing durable survives a restart; only client registrations are
+  stored.
+- **No other grants** — no implicit, no password, no client_credentials, no refresh
+  tokens.
+- **Tokens come from the same store as dashboard tokens** — `mintToken()` writes a
+  SHA-256-hashed `mcw_` row named `oauth:<client name>` with a real 30-day
+  `expires_at`, so an OAuth-issued token is visible and revocable on the dashboard's
+  Tokens page and verified by the identical `requireBearerAuth` path.
+
+This whole flow is covered end-to-end by `scripts/smoke-platform.mjs` (discovery →
+DCR → consent → PKCE exchange → `/mcp` call, plus wrong-verifier, code-reuse and
+unregistered-redirect rejections), so it runs in CI.
+
+**Remaining limitation — user-registered `stdio` servers are allowlist-gated.** The hub
+spawns stdio children as its own OS user, so a user-chosen command is code execution
+on the host. `stdioCommandAllowed()` (`src/config.ts`) therefore refuses any
+user-registered `stdio` server whose command is not in `STDIO_ALLOWED_COMMANDS` —
+a comma/whitespace-separated list of **bare executable names** (paths are rejected
+outright, matching is case-insensitive and `.exe`/`.cmd`/`.bat` are stripped). The
+default is *empty*, which means user-registered `stdio` is off entirely on a fresh
+deployment. It is enforced twice: `POST/PATCH /api/servers` returns a 400 naming the
+permitted commands, and the per-user aggregator re-filters rows at spawn time (so a row
+written straight into the DB, or one predating the current list, still cannot start).
+`config/servers.json` entries are operator-owned and always start; `http` upstreams need
+no allowlist.
 
 ### Per-user tool catalogs
 
@@ -165,8 +218,17 @@ the tool catalog.
 3. **Route** — on `tools/call`, the handler looks up the prefixed name, finds the
    owning upstream, and calls `client.callTool({ name: originalName, ... })`,
    returning the result verbatim.
-4. **Resilience** — a server that fails to start is recorded in `workstation_status`
-   instead of crashing the workstation; `workstation_reload` reconnects everything.
+4. **Resources** — `tools/list` is not the only thing proxied: each upstream's
+   `resources/list` is collected and re-registered with the **URI verbatim** (so
+   MCP Apps `ui://` documents referenced from a tool's `_meta` still resolve
+   through the hub), `resources/read` is forwarded to the owning server, name
+   collisions get a `_2`/`_3` suffix, URI collisions are first-wins, and the
+   `resources` capability is advertised only when at least one resource exists.
+   **Prompts are not proxied** — there is no prompt aggregation in the codebase.
+5. **Resilience** — a server that fails to start is recorded in `workstation_status`
+   instead of crashing the workstation; a background health checker re-probes and
+   reconnects it (`HEALTHCHECK_*`); `workstation_reload` re-reads the config and
+   reconnects everything.
 
 ## Storage
 
@@ -199,14 +261,31 @@ startup stays instant.
 ## Security posture
 
 - **Platform mode authenticates everything.** `/mcp` requests without a valid
-  token get a `401` + `WWW-Authenticate` challenge. Tokens are stored hashed
-  (SHA-256); per-user server secrets are encrypted (AES-256-GCM).
+  token get a `401` + `WWW-Authenticate` challenge (carrying `resource_metadata`
+  pointing at the RFC 9728 document). Tokens are stored hashed (SHA-256);
+  per-user server secrets are encrypted (AES-256-GCM).
 - **Multi-tenant isolation.** The per-user factory never registers another user's
   servers; toggling a server off drops it from the next request.
+- **User-registered stdio is allowlisted.** `STDIO_ALLOWED_COMMANDS` (empty by
+  default) must name the executable, and the check runs both on the API write and
+  again at spawn time — see the authorization-server section above.
+- **Outbound fetches are screened.** `fetch_url` and the `search` module go
+  through `src/netguard.ts`: http(s) only, no embedded credentials, hosts
+  resolving to loopback/private/link-local/reserved ranges refused, redirects
+  followed manually and re-screened per hop, and optionally narrowed by
+  `FETCH_ALLOWED_DOMAINS` (which can only restrict, never open up an internal host).
 - Filesystem sandboxed to `FILESYSTEM_ROOTS`; relative paths resolve inside them.
-- Databases read-only unless `*_ALLOW_WRITE=true` is set.
-- Key-gated modules (github, notion, slack, search, postgres) are off unless the
-  key is present — nothing phones home by default.
-- `fetch_url` supports a domain allowlist.
+- Databases read-only unless `*_ALLOW_WRITE=true` is set (`PG_ALLOW_WRITE`,
+  `SQLITE_ALLOW_WRITE`), enforced by a shared `assertReadOnly` SQL check.
+- Key-gated modules (github, jira, notion, slack, search, postgres) are off unless the
+  key is present — nothing phones home by default. The `devkit` module is the only
+  network-free utility bundle; `youtube` calls YouTube's public oEmbed endpoint.
+- **Tool calls are metered and logged.** In platform mode the rate limiter is on by
+  default (`RATE_LIMIT_*`; off for single-user runs), and every call writes an audit
+  line (`AUDIT_LOG_*`). Arg values are masked only when `AUDIT_LOG_MASK_ARGS=true`.
+- `fetch_url` supports a per-call domain allowlist.
 - Without `BETTER_AUTH_SECRET` there is no auth at all — single-user mode.
-  Sessions use secure cookies automatically behind HTTPS.
+  Sessions use secure cookies automatically behind HTTPS. In platform mode with
+  `NODE_ENV=production`, `BETTER_AUTH_URL` is **required** (and must be `https://`
+  for any non-local host) rather than defaulted to localhost, because both the
+  cookie `secure` flag and the OAuth issuer are derived from it.
