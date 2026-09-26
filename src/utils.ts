@@ -35,6 +35,15 @@ export function envBool(name: string, fallback = false): boolean {
   return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }
 
+/**
+ * Whether the workstation runs as a multi-user platform. Single source of
+ * truth for "is this deployment shared", used by auth wiring, rate limiting
+ * and the catalog so they can never disagree.
+ */
+export function platformModeEnabled(): boolean {
+  return env("BETTER_AUTH_SECRET") !== undefined;
+}
+
 /* ---- argument coercion for handlers (args come as unknown) ---- */
 
 export function str(v: unknown, fallback = ""): string {

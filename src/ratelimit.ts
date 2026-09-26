@@ -9,14 +9,15 @@
  * Per-tool overrides can be added later via the prefs system.
  */
 
-import { env, envBool } from "./utils.js";
+import { env, envBool, platformModeEnabled } from "./utils.js";
 
 interface WindowEntry {
   /** Timestamps of calls within the current window. */
   timestamps: number[];
 }
 
-const enabled = envBool("RATE_LIMIT_ENABLED", false);
+// A shared deployment limits by default; a single-user local one does not.
+const enabled = envBool("RATE_LIMIT_ENABLED", platformModeEnabled());
 const defaultMax = Math.max(Number(env("RATE_LIMIT_DEFAULT") ?? "60"), 1);
 const windowMs = Math.max(Number(env("RATE_LIMIT_WINDOW_MS") ?? "60000"), 1000);
 

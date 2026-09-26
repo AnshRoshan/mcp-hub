@@ -64,6 +64,8 @@ export interface ApiTokenRow {
   tokenHash: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /** ISO timestamp, or null for tokens that live until revoked (dashboard-minted). */
+  expiresAt: string | null;
 }
 
 export interface UserPrefsRow {
@@ -151,7 +153,8 @@ export class PlatformDb {
         name TEXT NOT NULL,
         token_hash TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
-        last_used_at TEXT
+        last_used_at TEXT,
+        expires_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens (user_id);
 
@@ -217,6 +220,10 @@ export class PlatformDb {
     if (!prefs.has("lite_catalog")) {
       this.db.exec("ALTER TABLE user_prefs ADD COLUMN lite_catalog INTEGER NOT NULL DEFAULT 0");
     }
+
+    if (!columns("api_tokens").has("expires_at")) {
+      this.db.exec("ALTER TABLE api_tokens ADD COLUMN expires_at TEXT");
+    }
   }
 
   close(): void {
@@ -281,33 +288,41 @@ export class PlatformDb {
 
   /* ---------------- api_tokens ---------------- */
 
-  insertToken(userId: string, name: string, tokenHash: string): ApiTokenRow {
+  insertToken(userId: string, name: string, tokenHash: string, expiresAt?: string): ApiTokenRow {
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     this.db
-      .prepare("INSERT INTO api_tokens (id, user_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(id, userId, name, tokenHash, createdAt);
-    return { id, userId, name, tokenHash, createdAt, lastUsedAt: null };
+      .prepare("INSERT INTO api_tokens (id, user_id, name, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(id, userId, name, tokenHash, createdAt, expiresAt ?? null);
+    return { id, userId, name, tokenHash, createdAt, lastUsedAt: null, expiresAt: expiresAt ?? null };
   }
 
   listTokens(userId: string): ApiTokenRow[] {
     return this.db
       .prepare(
         `SELECT id, user_id AS userId, name, token_hash AS tokenHash,
-                created_at AS createdAt, last_used_at AS lastUsedAt
+                created_at AS createdAt, last_used_at AS lastUsedAt, expires_at AS expiresAt
          FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC`,
       )
       .all(userId) as unknown as ApiTokenRow[];
   }
 
+  /**
+   * Resolve a token hash for bearer auth. Joined against `user` on purpose: a
+   * deleted account must not keep authenticating through an orphaned token.
+   * Returns undefined for unknown, expired, or owner-less tokens.
+   */
   getTokenByHash(tokenHash: string): ApiTokenRow | undefined {
     return this.db
       .prepare(
-        `SELECT id, user_id AS userId, name, token_hash AS tokenHash,
-                created_at AS createdAt, last_used_at AS lastUsedAt
-         FROM api_tokens WHERE token_hash = ?`,
+        `SELECT t.id, t.user_id AS userId, t.name, t.token_hash AS tokenHash,
+                t.created_at AS createdAt, t.last_used_at AS lastUsedAt, t.expires_at AS expiresAt
+         FROM api_tokens t
+         JOIN user u ON u.id = t.user_id
+         WHERE t.token_hash = ?
+           AND (t.expires_at IS NULL OR t.expires_at > ?)`,
       )
-      .get(tokenHash) as unknown as ApiTokenRow | undefined;
+      .get(tokenHash, new Date().toISOString()) as unknown as ApiTokenRow | undefined;
   }
 
   touchToken(id: string): void {

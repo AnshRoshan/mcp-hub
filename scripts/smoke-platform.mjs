@@ -60,6 +60,9 @@ async function main() {
       PUBLIC_BASE_URL: BASE,
       BETTER_AUTH_SECRET: SECRET,
       ALLOW_EMAIL_AUTH: "true",
+      // User-registered stdio is refused unless the command is allowlisted by
+      // the operator; permit exactly the test harness's `node` here.
+      STDIO_ALLOWED_COMMANDS: "node",
       PLATFORM_DB: DB,
       NODE_NO_WARNINGS: "1",
       // Low spill threshold so the oversized-result guard can be tested with
@@ -148,12 +151,22 @@ async function main() {
         key: "mybox",
         type: "stdio",
         category: "Development",
-        command: process.execPath,
+        command: path.basename(process.execPath),
         args: [TEST_SERVER],
         env: { MY_SECRET: "topsecret-42" },
       },
     });
     check("server registered", Boolean(created?.server?.id));
+
+    // A command the operator did not allowlist must never be stored.
+    const blocked = await api("/api/servers", {
+      cookie,
+      method: "POST",
+      body: { key: "evil", type: "stdio", command: "curl" },
+    });
+    check("non-allowlisted stdio command is refused", /not an allowed stdio server/.test(blocked?.error ?? ""), JSON.stringify(blocked));
+    const stillList = await api("/api/servers", { cookie });
+    check("refused server was not stored", !(stillList?.servers ?? []).some((s) => s.key === "evil"));
 
     // The server row must never contain the raw secret.
     const rows = await api("/api/servers", { cookie });
@@ -378,10 +391,10 @@ async function main() {
     });
     check("DCR rejects non-loopback http and validates redirect set", badReg.status === 400);
 
-    const newFlow = () => {
+    const newFlow = (redirect = REDIR) => {
       const verifier = randomBytes(32).toString("base64url");
       const challenge = createHash("sha256").update(verifier).digest("base64url");
-      const url = `${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(dcr.client_id)}&redirect_uri=${encodeURIComponent(REDIR)}&code_challenge=${challenge}&code_challenge_method=S256&state=st${randomBytes(3).toString("hex")}`;
+      const url = `${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(dcr.client_id)}&redirect_uri=${encodeURIComponent(redirect)}&code_challenge=${challenge}&code_challenge_method=S256&state=st${randomBytes(3).toString("hex")}`;
       return { verifier, url };
     };
     const approve = async (flow) => {
@@ -411,6 +424,12 @@ async function main() {
     const code1 = new URL(ok.location ?? "").searchParams.get("code");
     check("approval 302s to redirect_uri with single code + state",
       ok.res.status === 302 && (ok.location ?? "").startsWith(`${REDIR}?code=ac_`) && (ok.location ?? "").includes("state="));
+
+    // This loopback URI passes the scheme check but was never registered; codes
+    // must only ever go to a URI in the client's registered set.
+    const hijack = await fetch(newFlow(`${REDIR}/steal`).url, { headers: { Cookie: cookie }, redirect: "manual" });
+    check("authorize refuses a scheme-valid redirect_uri that was never registered",
+      hijack.status === 400 && !(hijack.headers.get("location") ?? "").includes("/steal"));
 
     const exchange = (flow, code, verifierOverride) => fetch(`${BASE}/oauth/token`, {
       method: "POST",

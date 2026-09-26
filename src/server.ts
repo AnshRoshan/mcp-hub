@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
+import { McpServer, createMcpHandler, fromJsonSchema, OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
 import type { CacheHint, JsonSchemaType, McpHttpHandler, StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { jsonResult } from "./result.js";
 import { env, num, layeredEnv, processEnv, type EnvSource } from "./utils.js";
-import { loadConfig, type WorkstationConfig, type UpstreamServerConfig } from "./config.js";
+import { loadConfig, stdioCommandAllowed, type WorkstationConfig, type UpstreamServerConfig } from "./config.js";
 import { ToolRegistry, registerModule, type ModuleInfo } from "./registry.js";
 import { ToolIndex, aliasesForModule, type ToolSearchHit } from "./toolsearch.js";
 import { lintDescriptions, descriptionScore } from "./descli.js";
@@ -86,6 +86,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     lastUsed: number;
   }
   const userAggregators = new Map<string, UserAggSlot>();
+  /** Refused stdio spawns are logged once per user+server, not per request. */
+  const blockedStdioWarned = new Set<string>();
   let sessionReaper: ReturnType<typeof setInterval> | undefined;
 
   /**
@@ -467,7 +469,19 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       return cached.promise;
     }
 
-    const rows = platform.db.listServers(userId).filter((r) => r.enabled === 1);
+    // Enforced again at spawn time: a row may predate the current allowlist,
+    // or have been written straight into the database.
+    const rows = platform.db
+      .listServers(userId)
+      .filter((r) => r.enabled === 1)
+      .filter((r) => {
+        if (r.type !== "stdio" || stdioCommandAllowed(r.command ?? "")) return true;
+        if (!blockedStdioWarned.has(`${userId}:${r.key}`)) {
+          blockedStdioWarned.add(`${userId}:${r.key}`);
+          console.warn(`[mcp-workstation] refusing to spawn non-allowlisted stdio server "${r.key}" for user ${userId}`);
+        }
+        return false;
+      });
     if (rows.length === 0) return undefined;
     const configs: UpstreamServerConfig[] = rows.map((r) => rowToConfig(r, platform.secret));
     const slot: UserAggSlot = {
@@ -738,9 +752,10 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     const userId =
       typeof ctx.authInfo?.extra?.userId === "string" ? (ctx.authInfo.extra.userId as string) : undefined;
     if (options.platform && !userId) {
-      // Shouldn't happen — requireBearerAuth gates /mcp before the handler.
-      // Fall back to the shared catalog so the request still succeeds.
-      return createMcpInstance(shared, undefined);
+      // `requireBearerAuth` gates /mcp before the handler, so this is a bug or
+      // a bypass attempt — never serve the shared catalog, which is built with
+      // the operator's own env and would hand out their credentials.
+      throw new OAuthError(OAuthErrorCode.InvalidToken, "Authenticated user missing in platform mode");
     }
     return buildServerForUserInternal(userId);
   }, {

@@ -17,7 +17,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PlatformDb } from "./db.js";
 import type { PlatformAuth } from "./auth.js";
-import { mintToken } from "./tokens.js";
+import { mintToken, OAUTH_TOKEN_LIFETIME_SECONDS } from "./tokens.js";
 
 const CODE_TTL_MS = 5 * 60_000;
 const PENDING_TTL_MS = 10 * 60_000;
@@ -70,6 +70,20 @@ function validRedirect(uri: string): boolean {
   if (u.protocol === "https:") return true;
   if (u.protocol === "http:") return ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname);
   return false;
+}
+
+/**
+ * The exact redirect URIs a client registered at `/register`. Comparison is
+ * whole-string, per RFC 6749 §3.1.2.3 — no prefix or wildcard matching.
+ */
+function registeredRedirectUris(client: { redirectUris: string } | undefined): Set<string> {
+  if (!client) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(client.redirectUris);
+    return new Set(Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === "string") : []);
+  } catch {
+    return new Set();
+  }
 }
 
 function b64url(buf: Buffer): string {
@@ -142,11 +156,16 @@ export async function handleOAuthRequest(request: Request, url: URL, ctx: OAuthC
     if (!verifier || s256(verifier) !== entry.challenge) return oauthError(400, "invalid_grant", "PKCE verification failed");
 
     const client = ctx.db.getOAuthClient(entry.clientId);
-    const minted = mintToken(ctx.db, entry.userId, `oauth:${client?.clientName ?? entry.clientId}`);
+    const minted = mintToken(
+      ctx.db,
+      entry.userId,
+      `oauth:${client?.clientName ?? entry.clientId}`,
+      OAUTH_TOKEN_LIFETIME_SECONDS,
+    );
     return json(200, {
       access_token: minted.token,
       token_type: "Bearer",
-      expires_in: 60 * 60 * 24 * 30,
+      expires_in: OAUTH_TOKEN_LIFETIME_SECONDS,
       scope: "mcp",
     }, { "Cache-Control": "no-store" });
   }
@@ -170,10 +189,13 @@ async function authorizeGet(request: Request, url: URL, ctx: OAuthContext, issue
   const method = p.get("code_challenge_method") ?? "";
   const responseType = p.get("response_type") ?? "";
   const state = p.get("state");
+  const client = ctx.db.getOAuthClient(clientId);
+  const registered = registeredRedirectUris(client);
 
   const fail = (err: string, desc: string): Response => {
-    // Errors surface at the client redirect when possible (RFC 6749 §4.1.2.1).
-    if (validRedirect(redirectUri) && ctx.db.getOAuthClient(clientId)) {
+    // Errors surface at the client redirect when possible (RFC 6749 §4.1.2.1),
+    // but only ever at a URI this client actually registered.
+    if (registered.has(redirectUri)) {
       const sep = redirectUri.includes("?") ? "&" : "?";
       return Response.redirect(`${redirectUri}${sep}error=${err}&error_description=${encodeURIComponent(desc)}${state ? `&state=${encodeURIComponent(state)}` : ""}`, 302);
     }
@@ -181,13 +203,18 @@ async function authorizeGet(request: Request, url: URL, ctx: OAuthContext, issue
   };
 
   if (responseType !== "code") return fail("unsupported_response_type", "Only response_type=code is supported");
-  if (!ctx.db.getOAuthClient(clientId)) return fail("invalid_client", "Unknown client_id — POST /register first");
-  if (!validRedirect(redirectUri)) return fail("invalid_request", "Bad redirect_uri");
+  if (!client) return fail("invalid_client", "Unknown client_id — POST /register first");
+  // RFC 6749 §3.1.2.3: compare against the client's registered set, not just
+  // the URL's scheme — otherwise any registered client can receive codes at an
+  // attacker-chosen redirect_uri.
+  if (!validRedirect(redirectUri) || !registered.has(redirectUri)) {
+    return fail("invalid_request", "redirect_uri does not match a URI registered for this client");
+  }
   if (!challenge || method !== "S256") return fail("invalid_request", "PKCE with code_challenge_method=S256 is required");
 
   const nonce = b64url(randomBytes(24));
   pending.set(nonce, { params: { clientId, redirectUri, state, challenge, challengeMethod: method, responseType }, userId: user.id, expires: Date.now() + PENDING_TTL_MS });
-  return consentPage(nonce, ctx.db.getOAuthClient(clientId)!.clientName, issuer);
+  return consentPage(nonce, client.clientName, issuer);
 }
 
 async function authorizePost(request: Request, ctx: OAuthContext): Promise<Response> {
