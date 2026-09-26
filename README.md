@@ -148,7 +148,7 @@ npm run stdio
   remote server to your account as a namespaced upstream (`/api/registry` is a
   read-only, session-gated proxy; no keys leave the server side).
 - **Publish our hub:** `registry/server.json` is a valid entry
-  (`io.github.anshace/mcp-workstation`, validated offline against the vendored
+  (`io.github.anshroshan/mcp-workstation`, validated offline against the vendored
   official schema via `npm run validate:registry`). To list it publicly: point
   the remote `url` at your deployed instance, claim the namespace via GitHub,
   and submit with the official [`mcp-publisher`](https://github.com/modelcontextprotocol/registry) CLI.

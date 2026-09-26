@@ -1,14 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "io.github.anshace/mcp-workstation",
+  "name": "io.github.anshroshan/mcp-workstation",
   "description": "One MCP endpoint that aggregates many servers plus built-in tools; multi-user, stateless-native.",
   "version": "0.1.0",
   "repository": {
-    "url": "https://github.com/anshace/mcp-workstation",
+    "url": "https://github.com/AnshRoshan/mcp-workstation",
     "source": "github"
   },
-  "websiteUrl": "https://github.com/anshace/mcp-workstation#readme",
-  "docsUrl": "https://github.com/anshace/mcp-workstation/blob/main/docs/ARCHITECTURE.md",
+  "websiteUrl": "https://github.com/AnshRoshan/mcp-workstation#readme",
+  "docsUrl": "https://github.com/AnshRoshan/mcp-workstation/blob/main/docs/ARCHITECTURE.md",
   "remotes": [
     {
       "type": "streamable-http",
