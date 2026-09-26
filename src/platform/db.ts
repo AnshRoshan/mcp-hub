@@ -30,6 +30,20 @@ export interface McpServerRow {
 /** SQL literal for the "never customized → all skills on" default. */
 const SKILLS_ALL_DEFAULT = `'${JSON.stringify(["*"])}'`;
 
+/** How long per-tool-call usage events stay queryable. */
+const USAGE_RETENTION_DAYS = 90;
+
+export interface UsageSummary {
+  days: number;
+  series: { date: string; calls: number; errors: number }[];
+  totalCalls: number;
+  totalErrors: number;
+  avgLatencyMs: number;
+  outBytes: number;
+  todayCalls: number;
+  topTools: { tool: string; calls: number }[];
+}
+
 function safeJsonArray(text: string): string[] {
   try {
     const v = JSON.parse(text);
@@ -162,6 +176,17 @@ export class PlatformDb {
         redirect_uris TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        latency_ms INTEGER NOT NULL,
+        out_bytes INTEGER NOT NULL DEFAULT 0,
+        ts TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_events (user_id, ts);
     `);
 
     this.migrate();
@@ -407,5 +432,72 @@ export class PlatformDb {
     return this.db
       .prepare("SELECT client_id AS clientId, client_name AS clientName, redirect_uris AS redirectUris FROM oauth_clients WHERE client_id = ?")
       .get(clientId) as unknown as { clientId: string; clientName: string; redirectUris: string } | undefined;
+  }
+
+  /* ---------------- usage_events ---------------- */
+
+  /** Prune at most once an hour per process — retention is coarse by design. */
+  private lastPruneTs = 0;
+
+  recordUsage(userId: string, tool: string, ok: boolean, latencyMs: number, outBytes: number): void {
+    const now = new Date();
+    this.db
+      .prepare("INSERT INTO usage_events (user_id, tool, ok, latency_ms, out_bytes, ts) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(userId, tool, ok ? 1 : 0, latencyMs, outBytes, now.toISOString());
+    if (now.getTime() - this.lastPruneTs > 3_600_000) {
+      this.lastPruneTs = now.getTime();
+      const cutoff = new Date(now.getTime() - USAGE_RETENTION_DAYS * 86_400_000).toISOString();
+      this.db.prepare("DELETE FROM usage_events WHERE ts < ?").run(cutoff);
+    }
+  }
+
+  /** Per-user rollup for the dashboard: daily buckets, totals, top tools. */
+  usageSummary(userId: string, days = 14): UsageSummary {
+    const since = new Date(Date.now() - (days - 1) * 86_400_000);
+    since.setUTCHours(0, 0, 0, 0);
+    const sinceIso = since.toISOString();
+
+    const buckets = this.db
+      .prepare(
+        `SELECT substr(ts, 1, 10) AS date, COUNT(*) AS calls,
+                SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS errors
+         FROM usage_events WHERE user_id = ? AND ts >= ? GROUP BY date`,
+      )
+      .all(userId, sinceIso) as unknown as { date: string; calls: number; errors: number }[];
+    const byDate = new Map(buckets.map((b) => [b.date, b]));
+    const series: { date: string; calls: number; errors: number }[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since.getTime() + i * 86_400_000).toISOString().slice(0, 10);
+      const b = byDate.get(d);
+      series.push({ date: d, calls: b?.calls ?? 0, errors: b?.errors ?? 0 });
+    }
+
+    const totals = this.db
+      .prepare(
+        `SELECT COUNT(*) AS calls, SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS errors,
+                COALESCE(CAST(AVG(latency_ms) AS INTEGER), 0) AS avgLatencyMs,
+                COALESCE(SUM(out_bytes), 0) AS outBytes
+         FROM usage_events WHERE user_id = ? AND ts >= ?`,
+      )
+      .get(userId, sinceIso) as unknown as { calls: number; errors: number | null; avgLatencyMs: number; outBytes: number };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const topTools = this.db
+      .prepare(
+        `SELECT tool, COUNT(*) AS calls FROM usage_events
+         WHERE user_id = ? AND ts >= ? GROUP BY tool ORDER BY calls DESC, tool ASC LIMIT 5`,
+      )
+      .all(userId, sinceIso) as unknown as { tool: string; calls: number }[];
+
+    return {
+      days,
+      series,
+      totalCalls: totals.calls,
+      totalErrors: totals.errors ?? 0,
+      avgLatencyMs: totals.avgLatencyMs,
+      outBytes: totals.outBytes,
+      todayCalls: byDate.get(today)?.calls ?? 0,
+      topTools,
+    };
   }
 }

@@ -566,16 +566,29 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         throw new Error(`Rate limited: tool "${def.name}" — retry after ${rl.retryAfterMs}ms (limit: ${rl.limit} per window)`);
       }
       const finish = startAudit(corrId, uid, def.name, rawArgs);
+      const t0 = performance.now();
+      const record = (ok: boolean, outBytes: number) => {
+        // Usage rollups exist only in platform mode; anonymous single-user calls
+        // have no user to attribute them to.
+        if (options.platform && userId) {
+          try {
+            options.platform.db.recordUsage(userId, def.name, ok, Math.round(performance.now() - t0), outBytes);
+          } catch { /* stats must never break the call path */ }
+        }
+      };
       return Promise.resolve(def.handler(rawArgs)).then(
         (result: import("@modelcontextprotocol/server").CallToolResult) => {
           recordRateLimit(uid, def.name);
           const guarded = guardResultSize(result, def.name, corrId);
-          finish({ ok: true, outputBytes: JSON.stringify(guarded).length });
+          const bytes = JSON.stringify(guarded).length;
+          finish({ ok: true, outputBytes: bytes });
+          record(true, bytes);
           return guarded;
         },
         (err: unknown) => {
           recordRateLimit(uid, def.name);
           finish({ ok: false, outputBytes: 0, error: err instanceof Error ? err.message : String(err) });
+          record(false, 0);
           throw err;
         },
       );

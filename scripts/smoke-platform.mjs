@@ -315,6 +315,15 @@ async function main() {
     const hubBad = await mcpCall(token, "hub_call", { tool: "no_such_tool", arguments: {} });
     check("hub_call rejects unknown tools with guidance", hubBad?.isError === true || JSON.stringify(hubBad ?? "").includes("hub_search_tools"));
 
+    // Usage rollup must reflect the MCP calls made through this user's token.
+    const usage = await api("/api/usage?days=14", { cookie });
+    check("GET /api/usage returns a 14-day series", usage?.series?.length === 14);
+    check("tool calls are counted per user", usage?.totalCalls >= 4, `totalCalls=${usage?.totalCalls}`);
+    check("usage reports a busiest tool", typeof usage?.topTools?.[0]?.tool === "string");
+    check("usage latency is a real number", Number.isFinite(usage?.avgLatencyMs) && usage.avgLatencyMs >= 0);
+    const usageBadDays = await api("/api/usage?days=999", { cookie });
+    check("usage clamps the days window", usageBadDays?.series?.length === 90);
+
     await api("/api/prefs", { cookie, method: "PUT", body: { liteCatalog: false } });
     await sleep(300);
     const listBack = await mcp("tools/list", token);
