@@ -238,9 +238,21 @@ export function jiraModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean;
     },
     {
       name: "jira_list_projects",
-      description: "List all accessible Jira projects (key, name, project type).",
-      inputSchema: { type: "object", properties: {} },
-      handler: () => jira("/rest/api/3/project/search?maxResults=100").then(jsonResult),
+      description:
+        "List accessible Jira projects (key, name, project type). Page through with start_at " +
+        "until the response reports isLast — one call returns at most max_results.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          max_results: { type: "integer", minimum: 1, maximum: 50, description: "Projects per page (default 50)" },
+          start_at: { type: "integer", minimum: 0, description: "Offset of the next page (default 0)" },
+        },
+      },
+      handler: (args) =>
+        jira(
+          `/rest/api/3/project/search?maxResults=${Math.min(Math.max(Math.round(num(args.max_results, 50)), 1), 50)}` +
+            `&startAt=${Math.max(Math.round(num(args.start_at, 0)), 0)}`,
+        ).then(jsonResult),
     },
     {
       name: "jira_get_project",

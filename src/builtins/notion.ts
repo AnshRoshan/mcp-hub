@@ -1,6 +1,6 @@
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
-import { apiClient, str } from "../utils.js";
+import { apiClient, num, str } from "../utils.js";
 import type { EnvSource } from "../utils.js";
 export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean; reason?: string } {
 
@@ -53,12 +53,15 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
   const notionDefs: ToolDef[] = [
     {
       name: "notion_search",
-      description: "Search Notion pages and databases (by title or all, if no query).",
+      description:
+        "Search Notion pages and databases (by title or all, if no query). Page through with " +
+        "start_cursor while has_more is true — one call returns at most page_size results.",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string" },
           page_size: { type: "integer", minimum: 1, maximum: 100 },
+          start_cursor: { type: "string", description: "next_cursor from a previous page; omit for the first page" },
         },
       },
       handler: (args) =>
@@ -66,7 +69,8 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           method: "POST",
           body: JSON.stringify({
             query: str(args.query),
-            page_size: Number(args.page_size) || 10,
+            page_size: Math.min(Math.max(Math.round(num(args.page_size, 10)), 1), 100),
+            ...(str(args.start_cursor) ? { start_cursor: str(args.start_cursor) } : {}),
           }),
         }).then(jsonResult),
     },
@@ -82,13 +86,25 @@ export function notionModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
     },
     {
       name: "notion_list_block_children",
-      description: "List the child blocks of a page or block (its content).",
+      description:
+        "List the child blocks of a page or block (its content). Page through with start_cursor " +
+        "while has_more is true — one call returns at most page_size blocks.",
       inputSchema: {
         type: "object",
-        properties: { block_id: { type: "string" } },
+        properties: {
+          block_id: { type: "string" },
+          page_size: { type: "integer", minimum: 1, maximum: 100, description: "Blocks per page (default 100)" },
+          start_cursor: { type: "string", description: "next_cursor from a previous page" },
+        },
         required: ["block_id"],
       },
-      handler: (args) => notion(`/blocks/${str(args.block_id)}/children`).then(jsonResult),
+      handler: (args) => {
+        const query = new URLSearchParams();
+        const pageSize = Math.min(Math.max(Math.round(num(args.page_size, 100)), 1), 100);
+        query.set("page_size", String(pageSize));
+        if (str(args.start_cursor)) query.set("start_cursor", str(args.start_cursor));
+        return notion(`/blocks/${pageId(args.block_id)}/children?${query}`).then(jsonResult);
+      },
     },
     {
       name: "notion_create_page",

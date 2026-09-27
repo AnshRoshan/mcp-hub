@@ -34,9 +34,12 @@ const SENSITIVE_KEYS = new Set([
   "cookie", "credentials", "env", "headers",
 ]);
 
-/** Deep-clone and mask sensitive values in an args object. */
+/**
+ * Deep-clone and mask sensitive values in an args object. Always masks —
+ * whether args are logged at all is the caller's decision at the entry site,
+ * and a helper named maskSensitive must not quietly return the raw input.
+ */
 function maskSensitive(args: Record<string, unknown>): Record<string, unknown> {
-  if (!maskArgs) return args;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(args)) {
     if (SENSITIVE_KEYS.has(k.toLowerCase())) {

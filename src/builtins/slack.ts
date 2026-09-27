@@ -51,6 +51,7 @@ export function slackModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean
         properties: {
           limit: { type: "integer", minimum: 1, maximum: 200, description: "Default 100" },
           types: { type: "string", description: "Comma list, e.g. public_channel,private_channel (default public_channel)" },
+          cursor: { type: "string", description: "next_cursor from a previous page; omit for the first page" },
         },
       },
       handler: (args) =>
@@ -58,6 +59,7 @@ export function slackModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean
           limit: num(args.limit, 100),
           types: str(args.types, "public_channel"),
           exclude_archived: true,
+          ...(str(args.cursor) ? { cursor: str(args.cursor) } : {}),
         }).then(jsonResult),
     },
     {
@@ -68,6 +70,7 @@ export function slackModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean
         properties: {
           channel: { type: "string" },
           limit: { type: "integer", minimum: 1, maximum: 100, description: "Default 20" },
+          cursor: { type: "string", description: "next_cursor from a previous page; omit for the first page" },
         },
         required: ["channel"],
       },
@@ -75,6 +78,7 @@ export function slackModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean
         slack("conversations.history", {
           channel: str(args.channel),
           limit: num(args.limit, 20),
+          ...(str(args.cursor) ? { cursor: str(args.cursor) } : {}),
         }).then(jsonResult),
     },
     {
@@ -82,9 +86,16 @@ export function slackModule(env: EnvSource): { defs: ToolDef[]; enabled: boolean
       description: "List workspace users.",
       inputSchema: {
         type: "object",
-        properties: { limit: { type: "integer", minimum: 1, maximum: 200 } },
+        properties: {
+          limit: { type: "integer", minimum: 1, maximum: 200 },
+          cursor: { type: "string", description: "next_cursor from a previous page; omit for the first page" },
+        },
       },
-      handler: (args) => slack("users.list", { limit: num(args.limit, 100) }).then(jsonResult),
+      handler: (args) =>
+        slack("users.list", {
+          limit: num(args.limit, 100),
+          ...(str(args.cursor) ? { cursor: str(args.cursor) } : {}),
+        }).then(jsonResult),
     },
   ];
 
