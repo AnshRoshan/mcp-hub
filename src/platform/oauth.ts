@@ -103,8 +103,18 @@ setInterval(() => {
   for (const [k, v] of codes) if (v.expires < now) codes.delete(k);
 }, 60_000).unref();
 
+/**
+ * The issuer published in AS metadata and used to build the sign-in redirect.
+ * Prefer the operator's configured public URL: deriving it from the request's
+ * Host header lets a spoofed host rewrite where clients are told to authenticate.
+ */
+function issuerFor(ctx: OAuthContext, requestOrigin: string): string {
+  const configured = ctx.auth.options?.baseURL;
+  return typeof configured === "string" && configured.length > 0 ? configured : requestOrigin;
+}
+
 export async function handleOAuthRequest(request: Request, url: URL, ctx: OAuthContext): Promise<Response> {
-  const issuer = url.origin;
+  const issuer = issuerFor(ctx, url.origin);
 
   /* ---------- AS metadata ---------- */
   if (url.pathname === "/.well-known/oauth-authorization-server") {
