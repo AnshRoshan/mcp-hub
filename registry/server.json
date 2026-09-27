@@ -4,11 +4,11 @@
   "description": "One MCP endpoint that aggregates many servers plus built-in tools; multi-user, stateless-native.",
   "version": "0.1.0",
   "repository": {
-    "url": "https://github.com/AnshRoshan/mcp-workstation",
+    "url": "https://github.com/AnshRoshan/mcp-hub",
     "source": "github"
   },
-  "websiteUrl": "https://github.com/AnshRoshan/mcp-workstation#readme",
-  "docsUrl": "https://github.com/AnshRoshan/mcp-workstation/blob/main/docs/ARCHITECTURE.md",
+  "websiteUrl": "https://github.com/AnshRoshan/mcp-hub#readme",
+  "docsUrl": "https://github.com/AnshRoshan/mcp-hub/blob/main/docs/ARCHITECTURE.md",
   "remotes": [
     {
       "type": "streamable-http",
