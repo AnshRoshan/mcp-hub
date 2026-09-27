@@ -589,8 +589,17 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     return createMcpInstance(catalog, userId);
   }
 
-  /** Max bytes of a tool result before it is spilled to a file (0 disables). */
-  const MAX_RESULT_BYTES = Math.max(Number(env("MAX_RESULT_BYTES") ?? ""), 0) || 200_000;
+  /**
+   * Max bytes of a tool result before it is spilled to a file (0 disables).
+   * An explicit 0 has to survive: `x || 200_000` would quietly turn the
+   * documented way to switch spilling off back into the default.
+   */
+  const MAX_RESULT_BYTES = (() => {
+    const raw = env("MAX_RESULT_BYTES");
+    if (raw === undefined) return 200_000;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 200_000;
+  })();
 
   /** Control-plane tools are bounded and must stay machine-parseable — never spilled. */
   const CONTROL_PLANE_TOOL = /^(workstation_|hub_)/;

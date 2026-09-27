@@ -152,12 +152,17 @@ export class UpstreamServer {
       `call "${this.key}/${originalName}"`,
     );
     // Enforce response size limit to prevent memory exhaustion.
-    const size = JSON.stringify(result).length;
+    // byteLength, not .length: a JSON string's length counts UTF-16 code units,
+    // so non-ASCII payloads would be measured smaller than they really are.
+    const size = Buffer.byteLength(JSON.stringify(result));
     if (size > MAX_RESPONSE_BYTES) {
+      console.error(`[upstream] ${this.key}/${originalName}: response truncated (${size} > ${MAX_RESPONSE_BYTES} bytes)`);
+      // Carry isError across: replacing the content of a *failed* call with a
+      // truncation notice turned an upstream error into a plausible success.
       const truncated = {
+        ...(result.isError === true ? { isError: true } : {}),
         content: [{ type: "text" as const, text: `[truncated — response was ${size} bytes, limit ${MAX_RESPONSE_BYTES}]` }],
       };
-      console.error(`[upstream] ${this.key}/${originalName}: response truncated (${size} > ${MAX_RESPONSE_BYTES} bytes)`);
       return truncated as unknown as CallToolResult;
     }
     return result;
