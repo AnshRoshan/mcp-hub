@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CodeBlock } from "@astryxdesign/core/CodeBlock";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { CLIENTS } from "../lib/catalog";
 import { mcpEndpoint } from "../lib/config";
 import { useStore } from "../lib/store";
-import { Btn, Kv, KvList, TabRail } from "../components/ui";
+import { Btn, Kv, KvList, TabPanel, TabRail } from "../components/ui";
+
+const TAB_BASE = "connect-client";
 
 export default function Connect() {
   const { navigate } = useStore();
@@ -55,9 +57,9 @@ export default function Connect() {
         </section>
 
         <section className="panel">
-          <TabRail items={CLIENTS.map((c) => ({ id: c.id, label: c.name }))} value={active} onChange={setActive} />
+          <TabRail items={CLIENTS.map((c) => ({ id: c.id, label: c.name }))} value={active} onChange={setActive} idBase={TAB_BASE} />
 
-          <div key={client.id} className="mt-4">
+          <TabPanel idBase={TAB_BASE} key={client.id} activeId={client.id} className="mt-4">
             <div className="mb-4">
               <KvList>
                 <Kv k="Endpoint URL" v={mcp} mono />
@@ -71,14 +73,14 @@ export default function Connect() {
               No token yet?{" "}
               <Btn variant="link" onClick={() => navigate("tokens")}>Create one</Btn>.
             </Text>
-          </div>
+          </TabPanel>
         </section>
       </div>
     </div>
   );
 }
 
-function Step({ n, children }: { n: number; children: React.ReactNode }) {
+function Step({ n, children }: { n: number; children: ReactNode }) {
   return (
     <li className="flex gap-3.5">
       <span className="telemetry flex h-7 w-7 flex-none items-center justify-center rounded-[6px] border border-border bg-surface text-[11px] font-bold text-primary">

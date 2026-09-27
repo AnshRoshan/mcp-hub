@@ -35,6 +35,15 @@ export function envBool(name: string, fallback = false): boolean {
   return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }
 
+/**
+ * Whether the workstation runs as a multi-user platform. Single source of
+ * truth for "is this deployment shared", used by auth wiring, rate limiting
+ * and the catalog so they can never disagree.
+ */
+export function platformModeEnabled(): boolean {
+  return env("BETTER_AUTH_SECRET") !== undefined;
+}
+
 /* ---- argument coercion for handlers (args come as unknown) ---- */
 
 export function str(v: unknown, fallback = ""): string {
@@ -56,6 +65,9 @@ export function obj(v: unknown): Record<string, unknown> {
 
 /* ---- HTTP helpers ---- */
 
+/** Ceiling on a response body any module may buffer through httpJson. */
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
 export interface HttpResponse {
   status: number;
   statusText: string;
@@ -68,12 +80,16 @@ export async function httpJson(
   url: string,
   init: RequestInit = {},
   timeoutMs = 30_000,
+  maxBytes = MAX_RESPONSE_BYTES,
 ): Promise<HttpResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
-    const text = await res.text();
+    // Read against a ceiling rather than res.text(): an upstream — or a URL an
+    // agent chose to follow — can stream far more than the process should hold.
+    const bytes = await readCapped(res.body, maxBytes);
+    const text = bytes.toString("utf-8");
     let body: unknown = text;
     try {
       body = JSON.parse(text);
@@ -88,6 +104,25 @@ export async function httpJson(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readCapped(stream: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Buffer> {
+  if (!stream) return Buffer.alloc(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`Response exceeded ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** Build a JSON API client: base URL + default headers + readable errors. */
@@ -135,17 +170,82 @@ export async function fetchJson(url: string, label: string, timeoutMs = 15_000):
   }
 }
 
+/**
+ * One read-only statement classifier for every SQL builtin. The engines are
+ * the real enforcement; this exists to give a readable error before a query is
+ * dispatched. Keeping it in one place stops the per-module copies drifting
+ * apart, which is how the SQLite and Postgres guards diverged once already.
+ * Assumes the input has been through stripSqlComments, so a comment prefix
+ * cannot hide the leading keyword.
+ */
+export const SQL_WRITE_RE =
+  /^\s*(insert|update|delete|drop|alter|create|truncate|attach|detach|reindex|vacuum|grant|revoke|comment|copy|merge|rename|call)\b|^\s*pragma\s+\w+\s*=|^\s*with\b[^;]*\b(insert|update|delete|drop|create)\b/i;
+
 /** Reject a SQL statement when the module is read-only and the statement writes. */
 export function assertReadOnly(
   sql: string,
   opts: { allowWrite: boolean; writeRe: RegExp; dbName: string; envVar: string },
 ): void {
-  if (!opts.allowWrite && opts.writeRe.test(sql)) {
+  if (opts.allowWrite) return;
+  const head = stripSqlComments(sql);
+  if (hasSecondStatement(head)) {
     throw new Error(
-      `Refusing to run a write statement ("${sql.trim().split(/\s+/)[0].toUpperCase()}..."). ` +
+      `${opts.dbName} is in read-only mode and accepts one statement per call; ` +
+        "set " + opts.envVar + "=true to allow writes.",
+    );
+  }
+  if (opts.writeRe.test(head)) {
+    throw new Error(
+      `Refusing to run a write statement ("${head.split(/\s+/)[0]?.toUpperCase() ?? ""}..."). ` +
         `${opts.dbName} is in read-only mode; set ${opts.envVar}=true to enable writes.`,
     );
   }
+}
+
+/**
+ * Drop whitespace and leading `--` / block comments so a statement cannot hide
+ * its real first keyword behind a comment prefix.
+ */
+export function stripSqlComments(sql: string): string {
+  let out = sql;
+  for (;;) {
+    const trimmed = out.trimStart();
+    if (trimmed.startsWith("--")) {
+      const nl = trimmed.indexOf("\n");
+      if (nl === -1) return "";
+      out = trimmed.slice(nl + 1);
+      continue;
+    }
+    if (trimmed.startsWith("/*")) {
+      const end = trimmed.indexOf("*/");
+      if (end === -1) return "";
+      out = trimmed.slice(end + 2);
+      continue;
+    }
+    return trimmed;
+  }
+}
+
+/**
+ * Whether a second statement follows the first. Semicolons inside single or
+ * double quotes do not count; a trailing `;` is normal and does not either.
+ */
+export function hasSecondStatement(sql: string): boolean {
+  let quote: string | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+    if (quote !== null) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === "'") i++;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      quote = c;
+      continue;
+    }
+    if (c === ";") return sql.slice(i + 1).trim().length > 0;
+  }
+  return false;
 }
 
 /** Race a promise against a timeout. */

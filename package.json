@@ -7,9 +7,18 @@
   "bin": {
     "mcp-workstation": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "public",
+    "skills",
+    "config",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:web": "vite --config web/vite.config.ts",
+    "prepare": "npm run build",
     "lint:dead": "fallow dead-code",
     "lint:dead:audit": "fallow audit",
     "check": "npm run typecheck && npm run typecheck:web && npm run lint:dead && npm run test:unit && npm run validate:registry",

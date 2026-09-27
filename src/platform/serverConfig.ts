@@ -49,6 +49,9 @@ export function encodeSecrets(values: Record<string, string>, secret: string): s
   return encryptSecret(JSON.stringify(values), secret);
 }
 
+/** Logged once: every stored blob failing to decode means the key changed. */
+let decryptFailureLogged = false;
+
 /** Decrypt the DB blob back to a plain map (empty object when unset/corrupt). */
 export function decodeSecrets(valuesEnc: string | undefined, secret: string): Record<string, string> {
   if (!valuesEnc) return {};
@@ -61,6 +64,16 @@ export function decodeSecrets(valuesEnc: string | undefined, secret: string): Re
     }
     return out;
   } catch {
+    // Returning {} is still correct — but it is indistinguishable from "user
+    // never set credentials", which made a BETTER_AUTH_SECRET rotation look
+    // like every tenant's keys had vanished. Say what actually happened.
+    if (!decryptFailureLogged) {
+      decryptFailureLogged = true;
+      console.error(
+        "[platform] stored credentials could not be decrypted — BETTER_AUTH_SECRET appears to have "
+          + "changed since they were saved. Users must re-enter their keys; later failures are not logged.",
+      );
+    }
     return {};
   }
 }
@@ -97,10 +110,29 @@ export function rowToConfig(row: McpServerRow, secret: string): UpstreamServerCo
 }
 
 /**
+ * Which env/header names are stored, without their values. Returns null when
+ * the blob cannot be decrypted at all — after a BETTER_AUTH_SECRET rotation
+ * every row looks like this, and throwing here used to turn GET /api/servers
+ * into a 500 that hid every server the user owns, including the readable ones.
+ */
+function keyNames(enc: string | undefined, secret: string): string[] | null {
+  if (enc === undefined) return [];
+  try {
+    const parsed = safeJson(decryptSecret(enc, secret));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return Object.keys(parsed as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Dashboard-safe view of a server row: decrypted only to report WHICH
  * env/header keys are set — never their values.
  */
 export function serverDto(row: McpServerRow, secret: string): unknown {
+  const envKeys = keyNames(row.envEnc, secret);
+  const headerKeys = keyNames(row.headersEnc, secret);
   return {
     id: row.id,
     key: row.key,
@@ -114,11 +146,10 @@ export function serverDto(row: McpServerRow, secret: string): unknown {
     createdAt: row.createdAt,
     hasEnv: Boolean(row.envEnc),
     hasHeaders: Boolean(row.headersEnc),
-    envKeys: row.envEnc
-      ? Object.keys(safeJson(decryptSecret(row.envEnc, secret)) as Record<string, unknown>)
-      : [],
-    headerKeys: row.headersEnc
-      ? Object.keys(safeJson(decryptSecret(row.headersEnc, secret)) as Record<string, unknown>)
-      : [],
+    envKeys: envKeys ?? [],
+    headerKeys: headerKeys ?? [],
+    // The dashboard can then say "stored but unreadable by this server key"
+    // instead of showing a server that appears to have no credentials.
+    secretsUnreadable: envKeys === null || headerKeys === null,
   };
 }

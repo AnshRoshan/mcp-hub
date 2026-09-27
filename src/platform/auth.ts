@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import type { DatabaseSync } from "node:sqlite";
-import { env, envBool } from "../utils.js";
+import { env, envBool, platformModeEnabled } from "../utils.js";
 
 export interface AuthConfig {
   /** URL clients use to reach this server, e.g. https://workstation.example.com */
@@ -93,16 +93,29 @@ export function createAuth(db: DatabaseSync, config: AuthConfig): PlatformAuth {
 
 /** Read the platform config from the environment. Returns null when platform mode is off. */
 export function platformEnabled(): boolean {
-  return env("BETTER_AUTH_SECRET") !== undefined;
+  return platformModeEnabled();
 }
 
 /** Derive the public base URL: BETTER_AUTH_URL, or PUBLIC_BASE_URL, or localhost:PORT. */
 function resolveBaseURL(port: number): string {
-  return (
-    env("BETTER_AUTH_URL") ??
-    env("PUBLIC_BASE_URL") ??
-    `http://localhost:${port}`
-  );
+  const explicit = env("BETTER_AUTH_URL") ?? env("PUBLIC_BASE_URL");
+  if (explicit === undefined) {
+    if (env("NODE_ENV") === "production") {
+      // Cookie `secure` and the OAuth issuer are both derived from this URL. A
+      // production host that forgets to set it would serve real session
+      // cookies over what the code believes is localhost, so refuse instead
+      // of guessing.
+      throw new Error(
+        "Platform mode in production requires BETTER_AUTH_URL (the public https:// URL clients reach this server by).",
+      );
+    }
+    return `http://localhost:${port}`;
+  }
+  const isLocal = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/.test(explicit);
+  if (explicit.startsWith("http://") && !isLocal) {
+    throw new Error(`BETTER_AUTH_URL must be https:// for a non-local host (got "${explicit}")`);
+  }
+  return explicit;
 }
 
 /** Config for the platform (call only when platformEnabled()). */
@@ -116,7 +129,8 @@ export function loadAuthConfig(port: number): AuthConfig {
     githubClientId: env("GITHUB_CLIENT_ID"),
     githubClientSecret: env("GITHUB_CLIENT_SECRET"),
     // Email/password is a dev convenience; the product is Google + GitHub.
-    allowEmail: envBool("ALLOW_EMAIL_AUTH", true),
+    // Off by default so a public deploy is not open for anyone to register.
+    allowEmail: envBool("ALLOW_EMAIL_AUTH", false),
     trustedOrigins: env("TRUSTED_ORIGINS")
       ? env("TRUSTED_ORIGINS")!.split(",").map((s) => s.trim()).filter(Boolean)
       : [],

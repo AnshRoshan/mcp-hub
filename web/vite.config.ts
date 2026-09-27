@@ -6,8 +6,9 @@ import path from "node:path";
 /**
  * MCP Workstation web app.
  *
- * - `vite` (dev)        → serves the app on :5173, proxying /api and /mcp to
- *                         the backend port from the root .env.
+ * - `vite` (dev)        → serves the app on :5173, proxying /api, /mcp, /oauth,
+ *                         /register and /.well-known to the backend port from
+ *                         the root .env.
  * - `vite build`        → emits the production bundle into ../public so the
  *                         existing Node backend serves it unchanged.
  */
@@ -22,6 +23,11 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": backend,
         "/mcp": backend,
+        // The OAuth 2.1 round-trip for /mcp clients: authorize/token plus the
+        // discovery documents they hang off. Missing here and dev-only 404s.
+        "/oauth": backend,
+        "/register": backend,
+        "/.well-known": backend,
       },
     },
     build: {

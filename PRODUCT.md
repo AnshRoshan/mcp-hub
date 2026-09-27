@@ -21,18 +21,38 @@ One endpoint, every MCP and skill — self-hosted, multi-user, and granular. A n
 ## Operating Context
 
 - Dashboard at `/`, sign-in with Google/GitHub or email/password (Better Auth).
-- Users register `stdio` or `http` MCP servers (secrets stored AES-256-GCM encrypted, never returned), toggle servers on/off, mint and revoke API tokens, toggle whole modules or individual tools, and enable/disable skills.
-- Connected clients hit `/mcp` with `Authorization: Bearer <token>` using the 2026-07-28 stateless protocol (legacy transports bridged).
+- Users register `stdio` or `http` MCP servers (secrets stored AES-256-GCM encrypted, never
+  returned), toggle servers on/off, mint and revoke API tokens, toggle whole modules or
+  individual tools, and enable/disable skills. User-registered `stdio` commands run as the
+  hub's own OS user, so they are refused unless the operator allowlists the executable via
+  `STDIO_ALLOWED_COMMANDS` (empty by default); `http` servers are unrestricted.
+- Connected clients hit `/mcp` with `Authorization: Bearer <token>` using the 2026-07-28
+  stateless protocol (legacy transports bridged). A client can also complete an OAuth 2.1
+  authorization-code + PKCE flow against the built-in authorization server and receive the
+  same kind of `mcw_` bearer token.
 - Everything is on by default; missing keys disable only their module.
-- The dashboard is a single page with a sidebar shell and views: Dashboard, Servers, API Tokens, Modules & Tools, Skills Hub, Settings.
+- The dashboard is a single page with a sidebar rail and views: Dashboard, MCP Directory,
+  Connect, Servers, API Tokens, Credentials, Modules & Tools, Skills, Settings (+ the Auth
+  view when signed out).
 
 ## Capabilities and Constraints
 
 - Multi-user auth (Google, GitHub, email) with per-user isolation; per-user servers, tokens, prefs.
-- 17 built-in modules grouped by category (Utilities, Web & API, Knowledge & Memory, Files & Data, Development, Productivity, Communication, Finance & Crypto, Web & News, Skills Hub, Operations) — time, uuid, fetch, memory, filesystem, knowledge, github, jira, search, postgres, sqlite, notion, slack, crypto, hn, weather, skills.
+- 19 built-in modules registered by `registerBuiltins()` (`src/server.ts`), grouped by category
+  (Utilities, Web & API, Knowledge & Memory, Files & Data, Development, Productivity,
+  Communication, Finance & Crypto, Web & News, Skills Hub) — time, uuid, fetch, memory,
+  filesystem, knowledge, github, jira, search, postgres, sqlite, notion, slack, crypto, hn,
+  weather, devkit, youtube, skills — and every catalog additionally carries the
+  `workstation` operations module (`workstation_status` / `workstation_reload`), so
+  `workstation_status` reports 20 modules.
 - Per-module and per-tool toggles; per-user skills hub (skills/*.md, loadable via skills_list / skills_get).
-- Constraint (user-confirmed): **dark theme**; **sidebar + views structure** stays; **all current features** stay; Google/GitHub + email sign-in flow stays.
-- Implementation: vanilla HTML/CSS/JS in `public/` (no build step), Node ≥ 22.5, `node:sqlite`, Better Auth, SDK v2 stateless MCP.
+- Constraint (user-confirmed): **dark theme** (shipped as the default register; a
+  persisted DAY/NIGHT toggle is part of the design — see DESIGN.md); **sidebar + views
+  structure** stays; **all current features** stay; Google/GitHub + email sign-in flow stays.
+- Implementation: dashboard source in `web/src/` — React 19 + Vite + Tailwind CSS v4 +
+  Meta's Astryx design system — built by `npm run build:web` into the committed `public/`
+  bundle, which the Node backend serves; backend is plain TypeScript (Node ≥ 22.5,
+  `node:sqlite`, Better Auth, MCP SDK v2 stateless).
 - Stack is an existing codebase — not an open decision.
 
 ## Brand Commitments
@@ -43,8 +63,16 @@ One endpoint, every MCP and skill — self-hosted, multi-user, and granular. A n
 
 ## Evidence on Hand
 
-- Working product: dashboard, platform mode, per-user catalogs, skills hub — all covered by automated smoke tests (`npm test`, `npm run test:platform`, `npm run test:integrations`).
-- Real integrations verified live: CoinGecko (crypto), Hacker News, Open-Meteo weather, Google/GitHub OAuth flow.
+- Working product: dashboard, platform mode, per-user catalogs, skills hub. Automated
+  coverage is **backend-side**: `npm test` (core smoke), `npm run test:platform`
+  (sign-up → tokens → per-user `/mcp` → isolation → OAuth 2.1 AS round trip) and
+  `npm run test:integrations` (GitHub + Jira against a **local mock** API). The dashboard
+  itself has no UI/visual tests — only `npm run typecheck:web` and the Vite build.
+- Network integrations that need no keys: CoinGecko (crypto), Hacker News, Open-Meteo
+  (weather). They were exercised by hand; **no automated test calls them** — the smoke
+  suites only assert the tools are listed, so the live response shape is untested.
+  Google/GitHub sign-in is wired through Better Auth and is also verified by hand: CI
+  signs in with **email/password**, so provider round-trips are not automated.
 - No user-generated testimonials exist; do not fabricate any.
 
 ## Product Principles

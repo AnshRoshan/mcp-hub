@@ -18,13 +18,27 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
 
   const gh = apiClient(API, "GitHub", headers);
 
+  /**
+   * Owner/repo/username go into the request path unencoded, so an agent-supplied
+   * value like `..%2fsome-other-endpoint` would otherwise be sent to the API with
+   * the user's token attached. GitHub's own grammar for these is a strict subset.
+   */
+  function segment(value: unknown, label: string): string {
+    const v = str(value);
+    if (!/^[A-Za-z0-9_.-]{1,100}$/.test(v) || v === "." || v === "..") {
+      throw new Error(`${label} must match [A-Za-z0-9_.-]{1,100} (got "${v}")`);
+    }
+    return v;
+  }
+
   function q(params: Record<string, string>): string {
     const sp = new URLSearchParams(params);
     return `?${sp}`;
   }
 
   const pagination = (args: Record<string, unknown>): Record<string, string> => ({
-    per_page: String(num(args.per_page, 30)),
+    per_page: String(Math.min(Math.max(Math.round(num(args.per_page, 30)), 1), 100)),
+    page: String(Math.max(Math.round(num(args.page, 1)), 1)),
   });
 
   /** owner+repo (required) with an optional per_page knob — shared by paginated repo list tools. */
@@ -34,6 +48,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       owner: { type: "string" },
       repo: { type: "string" },
       per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
     },
     required: ["owner", "repo"],
   };
@@ -46,7 +61,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         type: "object",
         properties: { username: { type: "string" } },
       },
-      handler: (args) => gh(str(args.username) ? `/users/${str(args.username)}` : "/user").then(jsonResult),
+      handler: (args) => gh(str(args.username) ? `/users/${segment(args.username, "username")}` : "/user").then(jsonResult),
     },
     {
       name: "gh_get_repo",
@@ -56,7 +71,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: { owner: { type: "string" }, repo: { type: "string" } },
         required: ["owner", "repo"],
       },
-      handler: (args) => gh(`/repos/${str(args.owner)}/${str(args.repo)}`).then(jsonResult),
+      handler: (args) => gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}`).then(jsonResult),
     },
     {
       name: "gh_create_repo",
@@ -90,13 +105,14 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: {
           username: { type: "string" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
           sort: { type: "string", enum: ["created", "updated", "pushed", "full_name"] },
         },
       },
       handler: (args) => {
         const p = pagination(args);
         if (str(args.sort)) p.sort = str(args.sort);
-        const pathname = str(args.username) ? `/users/${str(args.username)}/repos${q(p)}` : `/user/repos${q(p)}`;
+        const pathname = str(args.username) ? `/users/${segment(args.username, "username")}/repos${q(p)}` : `/user/repos${q(p)}`;
         return gh(pathname).then(jsonResult);
       },
     },
@@ -105,7 +121,8 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       description: "Search GitHub repositories by query (e.g. \"mcp server language:typescript stars:>100\").",
       inputSchema: {
         type: "object",
-        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 } },
+        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 },
+          page: { type: "integer", minimum: 1, description: "Result page (default 1)" } },
         required: ["query"],
       },
       handler: (args) => gh(`/search/repositories${q({ q: str(args.query), ...pagination(args) })}`).then(jsonResult),
@@ -121,6 +138,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           state: { type: "string", enum: ["open", "closed", "all"] },
           labels: { type: "string", description: "Comma-separated label names" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
@@ -128,7 +146,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         const p = pagination(args);
         p.state = str(args.state, "open");
         if (str(args.labels)) p.labels = str(args.labels);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues${q(p)}`).then(jsonResult);
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues${q(p)}`).then(jsonResult);
       },
     },
     {
@@ -139,7 +157,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: { owner: { type: "string" }, repo: { type: "string" }, issue_number: { type: "integer" } },
         required: ["owner", "repo", "issue_number"],
       },
-      handler: (args) => gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues/${num(args.issue_number)}`).then(jsonResult),
+      handler: (args) => gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues/${num(args.issue_number)}`).then(jsonResult),
     },
     {
       name: "gh_create_issue",
@@ -157,7 +175,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "title"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues`, {
           method: "POST",
           body: JSON.stringify({
             title: str(args.title),
@@ -191,7 +209,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         if (args.state !== undefined) body.state = str(args.state);
         if (args.labels !== undefined) body.labels = strArr(args.labels);
         if (args.assignees !== undefined) body.assignees = strArr(args.assignees);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues/${num(args.issue_number)}`, {
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues/${num(args.issue_number)}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         }).then(jsonResult);
@@ -211,7 +229,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "issue_number", "body"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues/${num(args.issue_number)}/comments`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues/${num(args.issue_number)}/comments`, {
           method: "POST",
           body: JSON.stringify({ body: str(args.body) }),
         }).then(jsonResult),
@@ -226,18 +244,20 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           issue_number: { type: "integer" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo", "issue_number"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/issues/${num(args.issue_number)}/comments${q(pagination(args))}`).then(jsonResult),
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/issues/${num(args.issue_number)}/comments${q(pagination(args))}`).then(jsonResult),
     },
     {
       name: "gh_search_issues",
       description: "Search issues and pull requests across GitHub (query syntax: repo:, label:, is:pr, …).",
       inputSchema: {
         type: "object",
-        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 } },
+        properties: { query: { type: "string" }, per_page: { type: "integer", minimum: 1, maximum: 100 },
+          page: { type: "integer", minimum: 1, description: "Result page (default 1)" } },
         required: ["query"],
       },
       handler: (args) => gh(`/search/issues${q({ q: str(args.query), ...pagination(args) })}`).then(jsonResult),
@@ -252,13 +272,14 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           state: { type: "string", enum: ["open", "closed", "all"] },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
       handler: (args) => {
         const p = pagination(args);
         p.state = str(args.state, "open");
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/pulls${q(p)}`).then(jsonResult);
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/pulls${q(p)}`).then(jsonResult);
       },
     },
     {
@@ -269,7 +290,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         properties: { owner: { type: "string" }, repo: { type: "string" }, pull_number: { type: "integer" } },
         required: ["owner", "repo", "pull_number"],
       },
-      handler: (args) => gh(`/repos/${str(args.owner)}/${str(args.repo)}/pulls/${num(args.pull_number)}`).then(jsonResult),
+      handler: (args) => gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/pulls/${num(args.pull_number)}`).then(jsonResult),
     },
     {
       name: "gh_create_pull_request",
@@ -287,7 +308,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "title", "head"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/pulls`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/pulls`, {
           method: "POST",
           body: JSON.stringify({
             title: str(args.title),
@@ -312,7 +333,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "pull_number"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/pulls/${num(args.pull_number)}/merge`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/pulls/${num(args.pull_number)}/merge`, {
           method: "PUT",
           body: JSON.stringify({
             commit_title: str(args.commit_title) || undefined,
@@ -335,7 +356,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "pull_number"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/pulls/${num(args.pull_number)}/reviews`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/pulls/${num(args.pull_number)}/reviews`, {
           method: "POST",
           body: JSON.stringify({
             body: str(args.body) || undefined,
@@ -358,7 +379,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       },
       handler: async (args) => {
         const qs = str(args.ref) ? `?ref=${encodeURIComponent(str(args.ref))}` : "";
-        const data = (await gh(`/repos/${str(args.owner)}/${str(args.repo)}/contents/${encodeURIComponent(str(args.path))}${qs}`)) as {
+        const data = (await gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/contents/${encodeURIComponent(str(args.path))}${qs}`)) as {
           content?: string;
           encoding?: string;
           size?: number;
@@ -396,7 +417,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         };
         if (str(args.branch)) body.branch = str(args.branch);
         if (str(args.sha)) body.sha = str(args.sha);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/contents/${encodeURIComponent(str(args.path))}`, {
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/contents/${encodeURIComponent(str(args.path))}`, {
           method: "PUT",
           body: JSON.stringify(body),
         }).then(jsonResult);
@@ -420,7 +441,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
       handler: (args) => {
         const body: Record<string, unknown> = { message: str(args.message), sha: str(args.sha) };
         if (str(args.branch)) body.branch = str(args.branch);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/contents/${encodeURIComponent(str(args.path))}`, {
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/contents/${encodeURIComponent(str(args.path))}`, {
           method: "DELETE",
           body: JSON.stringify(body),
         }).then(jsonResult);
@@ -436,26 +457,27 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           branch: { type: "string", description: "Branch or SHA (optional)" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
       handler: (args) => {
         const p = pagination(args);
         if (str(args.branch)) p.sha = str(args.branch);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/commits${q(p)}`).then(jsonResult);
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/commits${q(p)}`).then(jsonResult);
       },
     },
     {
       name: "gh_list_branches",
       description: "List branches in a repository.",
       inputSchema: repoPageSchema,
-      handler: (args) => gh(`/repos/${str(args.owner)}/${str(args.repo)}/branches${q(pagination(args))}`).then(jsonResult),
+      handler: (args) => gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/branches${q(pagination(args))}`).then(jsonResult),
     },
     {
       name: "gh_list_releases",
       description: "List releases of a repository.",
       inputSchema: repoPageSchema,
-      handler: (args) => gh(`/repos/${str(args.owner)}/${str(args.repo)}/releases${q(pagination(args))}`).then(jsonResult),
+      handler: (args) => gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/releases${q(pagination(args))}`).then(jsonResult),
     },
     {
       name: "gh_create_release",
@@ -474,7 +496,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "tag_name"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/releases`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/releases`, {
           method: "POST",
           body: JSON.stringify({
             tag_name: str(args.tag_name),
@@ -500,7 +522,7 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
         required: ["owner", "repo", "workflow_id"],
       },
       handler: (args) =>
-        gh(`/repos/${str(args.owner)}/${str(args.repo)}/actions/workflows/${encodeURIComponent(str(args.workflow_id))}/dispatches`, {
+        gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/actions/workflows/${encodeURIComponent(str(args.workflow_id))}/dispatches`, {
           method: "POST",
           body: JSON.stringify({
             ref: str(args.ref, "main"),
@@ -518,13 +540,14 @@ export function githubModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
           repo: { type: "string" },
           branch: { type: "string" },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
+      page: { type: "integer", minimum: 1, description: "Result page (default 1)" },
         },
         required: ["owner", "repo"],
       },
       handler: (args) => {
         const p = pagination(args);
         if (str(args.branch)) p.branch = str(args.branch);
-        return gh(`/repos/${str(args.owner)}/${str(args.repo)}/actions/runs${q(p)}`).then(jsonResult);
+        return gh(`/repos/${segment(args.owner, "owner")}/${segment(args.repo, "repo")}/actions/runs${q(p)}`).then(jsonResult);
       },
     },
     {

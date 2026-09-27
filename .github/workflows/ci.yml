@@ -1,5 +1,12 @@
 name: CI
 
+# What this workflow does NOT do (documented deliberately — see CONTRIBUTING.md,
+# "What CI does not cover"): no JS/TS lint step (ESLint is not a dependency of this
+# repo), no coverage reporting or threshold, no real-Postgres service container
+# (src/builtins/postgres.ts needs DATABASE_URL and no existing script exercises it),
+# no real Google/GitHub sign-in, and no check that the committed public/ bundle
+# matches web/ source.
+
 on:
   push:
     branches: [main]
@@ -17,9 +24,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci                  # `prepare` compiles dist/ here
       - run: npm run check          # typechecks + dead-code gate + unit tests + registry schema validation
       - run: npm run build && npm run build:web
-      - run: node scripts/smoke.mjs
-      - run: node scripts/smoke-platform.mjs
-      - run: node scripts/smoke-ghjira.mjs
+      - run: node scripts/smoke.mjs             # single-user, stateless MCP end-to-end
+      - run: node scripts/smoke-platform.mjs    # platform mode + OAuth 2.1 AS + multi-user isolation
+      - run: node scripts/smoke-ghjira.mjs      # GitHub + Jira against a LOCAL MOCK, not real APIs

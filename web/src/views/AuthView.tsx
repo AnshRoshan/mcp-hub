@@ -30,7 +30,7 @@ function GitHubMark() {
 }
 
 export default function AuthView() {
-  const { phase } = useStore();
+  const { phase, error: sessionError } = useStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export default function AuthView() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-5">
-      <section className="panel w-full max-w-[420px] p-8">
+      <section className="panel w-full max-w-[420px]">
         <div className="flex flex-col items-center text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-[10px] border border-border bg-surface">
             <Zap size={30} strokeWidth={2.2} className="text-primary" />
@@ -127,6 +127,10 @@ export default function AuthView() {
 
         {error && (
           <Banner status="error" title="Sign-in failed" description={error} className="mt-4" />
+        )}
+
+        {!error && sessionError && (
+          <Banner status="warning" title="Session ended" description={sessionError} className="mt-4" />
         )}
 
         {phase === "platform-off" && (

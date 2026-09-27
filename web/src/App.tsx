@@ -1,6 +1,9 @@
+import type { JSX } from "react";
 import { ToastViewport } from "@astryxdesign/core/Toast";
+import { TriangleAlert } from "lucide-react";
 import { AppShellLayout } from "./components/Shell";
 import { ToastBridge } from "./components/ui";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StoreProvider, useStore, type ViewKey } from "./lib/store";
 import AuthView from "./views/AuthView";
 import Connect from "./views/Connect";
@@ -13,7 +16,9 @@ import Settings from "./views/Settings";
 import Skills from "./views/Skills";
 import Tokens from "./views/Tokens";
 
-const VIEWS: Record<ViewKey, () => React.JSX.Element> = {
+import { Btn } from "./components/ui";
+
+const VIEWS: Record<ViewKey, () => JSX.Element> = {
   dashboard: Dashboard,
   directory: Directory,
   connect: Connect,
@@ -26,10 +31,14 @@ const VIEWS: Record<ViewKey, () => React.JSX.Element> = {
 };
 
 function AppInner() {
-  const { phase, view } = useStore();
+  const { phase, view, error, retry } = useStore();
 
   if (phase === "loading") {
     return <BootSkeleton />;
+  }
+
+  if (phase === "error") {
+    return <BootFault message={error} onRetry={retry} />;
   }
 
   if (phase === "platform-off" || phase === "auth") {
@@ -42,6 +51,25 @@ function AppInner() {
     <AppShellLayout>
       <Active key={view} />
     </AppShellLayout>
+  );
+}
+
+/** Cold instrument: the backend answered badly, so say so and offer a retry. */
+function BootFault({ message, onRetry }: { message: string | null; onRetry: () => void }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center p-5">
+      <div className="cold-instrument w-full max-w-[420px]">
+        <span className="cold-flag">
+          <TriangleAlert size={11} strokeWidth={2.4} />
+          No signal
+        </span>
+        <div className="cold-title">The workstation did not answer</div>
+        <p className="cold-copy">{message || "Something went wrong while starting the dashboard."}</p>
+        <Btn variant="primary" className="mt-2" onClick={onRetry}>
+          Try again
+        </Btn>
+      </div>
+    </div>
   );
 }
 
@@ -105,7 +133,9 @@ export default function App() {
   return (
     <StoreProvider>
       <ToastViewport position="bottomEnd" maxVisible={3} inset={{ bottom: 24, end: 24 }}>
-        <AppInner />
+        <ErrorBoundary>
+          <AppInner />
+        </ErrorBoundary>
         <ToastBridge />
       </ToastViewport>
     </StoreProvider>

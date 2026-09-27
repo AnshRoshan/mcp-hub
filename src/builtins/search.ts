@@ -1,6 +1,7 @@
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
 import { assertOk, httpJson, num, str } from "../utils.js";
+import { guardedFetch } from "../netguard.js";
 import type { EnvSource } from "../utils.js";
 
 type Provider = "brave" | "tavily" | "exa";
@@ -91,9 +92,11 @@ export function searchModule(env: EnvSource): { defs: ToolDef[]; enabled: boolea
   }
 
   async function plainExtract(url: string): Promise<string> {
-    const res = await httpJson(url, {}, 30_000);
-    if (res.status >= 400) throw new Error(`Could not fetch ${url} (HTTP ${res.status})`);
-    const text = typeof res.body === "string" ? res.body : JSON.stringify(res.body);
+    // This path takes an arbitrary URL from tool arguments, so it goes through
+    // the same SSRF screen as fetch_url instead of an open httpJson call.
+    const { response } = await guardedFetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (response.status >= 400) throw new Error(`Could not fetch ${url} (HTTP ${response.status})`);
+    const text = await response.text();
     return text
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")

@@ -1,14 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
+import { McpServer, createMcpHandler, fromJsonSchema, OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
 import type { CacheHint, JsonSchemaType, McpHttpHandler, StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { jsonResult } from "./result.js";
 import { env, num, layeredEnv, processEnv, type EnvSource } from "./utils.js";
-import { loadConfig, type WorkstationConfig, type UpstreamServerConfig } from "./config.js";
+import { loadConfig, stdioCommandAllowed, type WorkstationConfig, type UpstreamServerConfig } from "./config.js";
 import { ToolRegistry, registerModule, type ModuleInfo } from "./registry.js";
 import { ToolIndex, aliasesForModule, type ToolSearchHit } from "./toolsearch.js";
 import { lintDescriptions, descriptionScore } from "./descli.js";
 import { UpstreamAggregator, type ProxiedResourceEntry } from "./proxy/aggregator.js";
+import { CALL_TIMEOUT_MS } from "./proxy/upstream.js";
 import type { ToolDef } from "./registry.js";
 import type { PlatformDb } from "./platform/db.js";
 import { rowToConfig, decodeSecrets } from "./platform/serverConfig.js";
@@ -21,13 +22,13 @@ import { timeDefs } from "./builtins/time.js";
 import { uuidDefs } from "./builtins/uuid.js";
 import { fetchDefs } from "./builtins/fetch.js";
 import { memoryDefs } from "./builtins/memory.js";
-import { filesystemDefs, filesystemRoots } from "./builtins/filesystem.js";
-import { knowledgeDefs, knowledgeEnabled } from "./builtins/knowledge.js";
+import { filesystemDefs } from "./builtins/filesystem.js";
+import { knowledgeModule } from "./builtins/knowledge.js";
 import { githubModule } from "./builtins/github.js";
 import { jiraModule } from "./builtins/jira.js";
 import { searchModule } from "./builtins/search.js";
 import { postgresDefs, postgresEnabled } from "./builtins/postgres.js";
-import { sqliteDefs, sqliteEnabled } from "./builtins/sqlite.js";
+import { sqliteModule } from "./builtins/sqlite.js";
 import { notionModule } from "./builtins/notion.js";
 import { slackModule } from "./builtins/slack.js";
 import { cryptoDefs } from "./builtins/crypto.js";
@@ -35,12 +36,15 @@ import { hnDefs } from "./builtins/hn.js";
 import { weatherDefs } from "./builtins/weather.js";
 import { devkitDefs } from "./builtins/devkit.js";
 import { youtubeDefs } from "./builtins/youtube.js";
+import { defaultScope, userScope, type StorageScope } from "./scope.js";
 
 const VERSION = "0.2.0";
 
 /** Cache hint for tool catalogs: they only change on reload, so allow caching. */
 const TOOL_LIST_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "public" };
 const DISCOVER_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "public" };
+/** Platform mode answers are per-user, so no shared cache may reuse them. */
+const PRIVATE_CACHE_HINT: CacheHint = { ttlMs: 60_000, cacheScope: "private" };
 
 export interface WorkstationOptions {
   /** Present when platform mode (multi-user auth) is on. */
@@ -77,7 +81,12 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
    * Per-user aggregators for user-registered servers. stdio children are
    * expensive, so sessions are single-flight, idle-evicted, and LRU-capped.
    */
-  const USER_SESSION_TTL_MS = Math.max(Number(env("USER_SESSION_TTL_MS") ?? ""), 0) || 15 * 60_000;
+  // Floor the idle window above the longest call a session can be inside, so a
+  // short operator-set TTL cannot evict an aggregator mid-tool-call.
+  const USER_SESSION_TTL_MS = Math.max(
+    Math.max(Number(env("USER_SESSION_TTL_MS") ?? ""), 0) || 15 * 60_000,
+    CALL_TIMEOUT_MS * 2,
+  );
   const MAX_USER_SESSIONS = Math.max(Number(env("MAX_USER_SESSIONS") ?? ""), 0) || 50;
 
   interface UserAggSlot {
@@ -86,6 +95,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     lastUsed: number;
   }
   const userAggregators = new Map<string, UserAggSlot>();
+  /** Refused stdio spawns are logged once per user+server, not per request. */
+  const blockedStdioWarned = new Set<string>();
   let sessionReaper: ReturnType<typeof setInterval> | undefined;
 
   /**
@@ -103,6 +114,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     /** Upstream resources (incl. MCP Apps `ui://`), URIs verbatim. */
     resources: ProxiedResourceEntry[];
     status: unknown;
+    /** Where this catalog's stateful builtins store data (also the spill dir). */
+    scope: StorageScope;
   }
 
   interface CatalogPrefs {
@@ -111,6 +124,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     skills: Set<string>;
     /** Where credential-gated builtin modules read their config from. */
     env: EnvSource;
+    /** Server-assigned storage root for the stateful builtin modules. */
+    scope: StorageScope;
     /** Search-first exposure: only Tier-0 tools listed, rest behind hub tools. */
     lite: boolean;
   }
@@ -118,8 +133,16 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
   /** Tools always visible in lite mode (plus the three hub meta-tools). */
   const LITE_TIER0 = new Set(["workstation_status", "workstation_reload"]);
 
+  /**
+   * Per-account storage lives under the platform database's directory as
+   * `<data>/users/<userId>/` (see `scope.ts`); single-user mode keeps the
+   * env-driven paths it has always used.
+   */
+  const userStorageScope = (db: PlatformDb, userId: string): StorageScope =>
+    userScope(path.dirname(db.filePath), userId);
+
   /** The shared catalog — what the dashboard and `workstation_status` (no user) report. */
-  let shared: Catalog = { tools: [], hidden: null, index: null, resources: [], status: null };
+  let shared: Catalog = { tools: [], hidden: null, index: null, resources: [], status: null, scope: defaultScope() };
 
   interface BuiltinModule {
     name: string;
@@ -127,7 +150,8 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     /**
      * Produce this module's tools + enabled state for one catalog. Most
      * modules ignore `prefs` (constant defs); credential-gated ones build
-     * clients from `prefs.env`, so each user's tools carry THEIR tokens.
+     * clients from `prefs.env`, and stateful ones bind to `prefs.scope`, so
+     * each user's tools carry THEIR tokens and read/write THEIR files.
      */
     forPrefs: (prefs: CatalogPrefs) => { defs: ToolDef[]; enabled: boolean; reason?: string };
   }
@@ -156,18 +180,31 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     builtinModules.push({ name, category, forPrefs: (prefs) => build(prefs.env) });
   }
 
+  /**
+   * Register a module that keeps state on disk. It is built per catalog from
+   * the server-assigned scope, so a tenant's tools can only ever reach that
+   * tenant's own files and databases.
+   */
+  function defineScopedModule(
+    name: string,
+    category: string,
+    build: (scope: StorageScope) => { defs: ToolDef[]; enabled: boolean; reason?: string },
+  ): void {
+    builtinModules.push({ name, category, forPrefs: (prefs) => build(prefs.scope) });
+  }
+
   function registerBuiltins(): void {
     defineModule("time", "Utilities", timeDefs, true);
     defineModule("uuid", "Utilities", uuidDefs, true);
     defineModule("fetch", "Web & API", fetchDefs, true);
-    defineModule("memory", "Knowledge & Memory", memoryDefs, true);
-    defineModule("filesystem", "Files & Data", filesystemDefs, true);
-    defineModule("knowledge", "Knowledge & Memory", knowledgeDefs, knowledgeEnabled.enabled);
+    defineScopedModule("memory", "Knowledge & Memory", (scope) => ({ defs: memoryDefs(scope), enabled: true }));
+    defineScopedModule("filesystem", "Files & Data", (scope) => ({ defs: filesystemDefs(scope), enabled: true }));
+    defineScopedModule("knowledge", "Knowledge & Memory", knowledgeModule);
     defineEnvModule("github", "Development", githubModule);
     defineEnvModule("jira", "Productivity", jiraModule);
     defineEnvModule("search", "Web & API", searchModule);
     defineModule("postgres", "Files & Data", postgresDefs, postgresEnabled.enabled, postgresEnabled.enabled ? undefined : postgresEnabled.reason);
-    defineModule("sqlite", "Files & Data", sqliteDefs, sqliteEnabled.enabled, sqliteEnabled.enabled ? undefined : sqliteEnabled.reason);
+    defineScopedModule("sqlite", "Files & Data", sqliteModule);
     defineEnvModule("notion", "Productivity", notionModule);
     defineEnvModule("slack", "Communication", slackModule);
     defineModule("crypto", "Finance & Crypto", cryptoDefs, true);
@@ -234,9 +271,9 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     ];
   }
 
-  /** The two Operations tools every catalog exposes, even in lite mode. */
+  /** The Operations tools every catalog exposes, even in lite mode. */
   function metaToolDefs(getStatus: () => unknown): ToolDef[] {
-    return [
+    const defs: ToolDef[] = [
       {
         name: "workstation_status",
         description:
@@ -244,17 +281,22 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         inputSchema: { type: "object", properties: {} },
         handler: () => jsonResult(getStatus()),
       },
-      {
-        name: "workstation_reload",
-        description:
-          "Re-read config/servers.json, reconnect all shared upstream MCP servers, and refresh the tool list.",
-        inputSchema: { type: "object", properties: {} },
-        handler: async () => {
-          const summary = await reload();
-          return jsonResult({ message: "Reloaded", ...JSON.parse(summary) });
-        },
-      },
     ];
+    // Reload drops and re-spawns every shared upstream, so in platform mode it
+    // is an operator action — leaving it in a user's catalog lets one tenant
+    // disconnect everyone else's connections on demand.
+    if (options.platform) return defs;
+    defs.push({
+      name: "workstation_reload",
+      description:
+        "Re-read config/servers.json, reconnect all shared upstream MCP servers, and refresh the tool list.",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => {
+        const summary = await reload();
+        return jsonResult({ message: "Reloaded", ...JSON.parse(summary) });
+      },
+    });
+    return defs;
   }
 
   /** Register one module's tools into a catalog's registry, or record why it was skipped. */
@@ -356,7 +398,7 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       userUpstreams: userAgg ? userAgg.summaries() : [],
       totalTools: all.length,
       descriptionQuality: { score: descriptionScore(all, smells), flagged: smells.slice(0, 10) },
-      filesystemRoots,
+      filesystemRoots: prefs.scope.filesystemRoots,
       disabledModules: [...prefs.modules],
       disabledTools: [...prefs.tools],
       enabledSkills: [...prefs.skills],
@@ -366,14 +408,14 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     };
 
     if (!prefs.lite) {
-      return { tools: all, hidden: null, index: null, resources, status };
+      return { tools: all, hidden: null, index: null, resources, status, scope: prefs.scope };
     }
     // Lite: only Tier-0 meta + hub tools are listed; the rest stay callable via hub.
     const index = new ToolIndex(all.filter((d) => !LITE_TIER0.has(d.name)), aliases);
     const tools = all.filter((d) => LITE_TIER0.has(d.name));
     // hidden excludes the Tier-0 already-listed tools (they're directly callable).
     for (const name of LITE_TIER0) hiddenMap.delete(name);
-    return { tools, hidden: hiddenMap, index, resources, status };
+    return { tools, hidden: hiddenMap, index, resources, status, scope: prefs.scope };
   }
 
   /** The catalog for a platform-mode request (their prefs + their upstreams). */
@@ -390,9 +432,12 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     startHealthChecker({
       reconnect: async (key) => {
         const cfg = config.upstreamServers.find((s) => s.key === key);
-        if (cfg) await aggregator.reconnect(key, cfg);
+        if (!cfg) return;
+        await aggregator.reconnect(key, cfg);
+        // A reconnect can change the tool list, and `shared` is a snapshot.
+        shared = assembleCatalog(defaultPrefs());
       },
-      getServerState: (key) => aggregator.getState(key),
+      probeServer: (key) => aggregator.probe(key, healthCheckerInfo().probeTimeoutMs),
       getConfigs: () => config.upstreamServers,
     });
     // Periodically close idle per-user upstream sessions (stdio children).
@@ -429,7 +474,9 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     if (!slot) return;
     userAggregators.delete(userId);
     // Also covers invalidation while still connecting: close once connect lands.
-    void slot.promise.then((agg) => agg.disconnectAll());
+    slot.promise
+      .then((agg) => agg.disconnectAll())
+      .catch((err: unknown) => console.error(`[mcp-workstation] disconnect during invalidation failed: ${String(err)}`));
   }
 
   /** Close a user's session and drop stdio children. */
@@ -467,7 +514,19 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       return cached.promise;
     }
 
-    const rows = platform.db.listServers(userId).filter((r) => r.enabled === 1);
+    // Enforced again at spawn time: a row may predate the current allowlist,
+    // or have been written straight into the database.
+    const rows = platform.db
+      .listServers(userId)
+      .filter((r) => r.enabled === 1)
+      .filter((r) => {
+        if (r.type !== "stdio" || stdioCommandAllowed(r.command ?? "")) return true;
+        if (!blockedStdioWarned.has(`${userId}:${r.key}`)) {
+          blockedStdioWarned.add(`${userId}:${r.key}`);
+          console.warn(`[mcp-workstation] refusing to spawn non-allowlisted stdio server "${r.key}" for user ${userId}`);
+        }
+        return false;
+      });
     if (rows.length === 0) return undefined;
     const configs: UpstreamServerConfig[] = rows.map((r) => rowToConfig(r, platform.secret));
     const slot: UserAggSlot = {
@@ -479,12 +538,24 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       lastUsed: Date.now(),
     };
     userAggregators.set(userId, slot);
+    slot.promise.catch(() => {
+      // A rejected connect must not stay cached, or every later request for
+      // this user replays the same failure until the process restarts.
+      if (userAggregators.get(userId) === slot) userAggregators.delete(userId);
+    });
     return slot.promise;
   }
 
   /** The single-user / shared defaults: everything on, server-owned env, full catalog. */
   function defaultPrefs(): CatalogPrefs {
-    return { modules: new Set(), tools: new Set(), skills: allSkillNames(skillCatalog), env: processEnv, lite: false };
+    return {
+      modules: new Set(),
+      tools: new Set(),
+      skills: allSkillNames(skillCatalog),
+      env: processEnv,
+      scope: defaultScope(),
+      lite: false,
+    };
   }
 
   /** Disabled builtin modules / tools, enabled skills, credentials, and catalog mode for a user. */
@@ -502,6 +573,11 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       // "*" (the DB default) means untouched → every skill on. Explicit lists respected.
       skills: prefsRow ? (stored.has("*") ? allSkillNames(skillCatalog) : stored) : allSkillNames(skillCatalog),
       env: layeredEnv(secrets, processEnv),
+      // Storage is keyed off the authenticated id, never off anything the
+      // caller sends, so one tenant cannot aim their tools at another's files.
+      // Deleting an account is NOT mirrored on disk — wiping tenant data
+      // automatically would be destructive.
+      scope: userStorageScope(platform.db, userId),
       // New users default to the token-frugal lite catalog; existing rows keep their setting.
       lite: prefsRow ? prefsRow.liteCatalog === 1 : true,
     };
@@ -513,22 +589,38 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     return createMcpInstance(catalog, userId);
   }
 
-  /** Max bytes of a tool result before it is spilled to a file (0 disables). */
-  const MAX_RESULT_BYTES = Math.max(Number(env("MAX_RESULT_BYTES") ?? ""), 0) || 200_000;
+  /**
+   * Max bytes of a tool result before it is spilled to a file (0 disables).
+   * An explicit 0 has to survive: `x || 200_000` would quietly turn the
+   * documented way to switch spilling off back into the default.
+   */
+  const MAX_RESULT_BYTES = (() => {
+    const raw = env("MAX_RESULT_BYTES");
+    if (raw === undefined) return 200_000;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 200_000;
+  })();
 
   /** Control-plane tools are bounded and must stay machine-parseable — never spilled. */
   const CONTROL_PLANE_TOOL = /^(workstation_|hub_)/;
 
   /**
-   * Spill oversized results into the workspace so the agent's context stays
-   * small and the full data stays reachable (fs_read / knowledge tools).
+   * Spill oversized results into the caller's own workspace so the agent's
+   * context stays small and the full data stays reachable (fs_read / knowledge
+   * tools) — and so no other tenant can list or read it back out of a
+   * shared directory.
    */
-  function guardResultSize(result: import("@modelcontextprotocol/server").CallToolResult, tool: string, corrId: string) {
+  function guardResultSize(
+    result: import("@modelcontextprotocol/server").CallToolResult,
+    tool: string,
+    corrId: string,
+    scope: StorageScope,
+  ) {
     if (!MAX_RESULT_BYTES || CONTROL_PLANE_TOOL.test(tool)) return result;
     const text = JSON.stringify(result);
     if (text.length <= MAX_RESULT_BYTES) return result;
     try {
-      const dir = path.join(config.filesystemRoots[0] ?? path.resolve(process.cwd(), "data"), "results");
+      const dir = scope.resultsDir;
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${corrId}.json`);
       fs.writeFileSync(file, text);
@@ -570,6 +662,10 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         throw new Error(`Rate limited: tool "${def.name}" — retry after ${rl.retryAfterMs}ms (limit: ${rl.limit} per window)`);
       }
       const finish = startAudit(corrId, uid, def.name, rawArgs);
+      // Consume the slot now, in the same tick as the check. Recording only
+      // once the handler settled let N concurrent calls all pass the check
+      // against the same pre-increment window.
+      recordRateLimit(uid, def.name);
       const t0 = performance.now();
       const record = (ok: boolean, outBytes: number) => {
         // Usage rollups exist only in platform mode; anonymous single-user calls
@@ -582,15 +678,13 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
       };
       return Promise.resolve(def.handler(rawArgs)).then(
         (result: import("@modelcontextprotocol/server").CallToolResult) => {
-          recordRateLimit(uid, def.name);
-          const guarded = guardResultSize(result, def.name, corrId);
+          const guarded = guardResultSize(result, def.name, corrId, catalog.scope);
           const bytes = JSON.stringify(guarded).length;
           finish({ ok: true, outputBytes: bytes });
           record(true, bytes);
           return guarded;
         },
         (err: unknown) => {
-          recordRateLimit(uid, def.name);
           finish({ ok: false, outputBytes: 0, error: err instanceof Error ? err.message : String(err) });
           record(false, 0);
           throw err;
@@ -605,17 +699,18 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
         capabilities: { tools: {}, ...(catalog.resources.length > 0 ? { resources: {} } : {}) },
         cacheHints: {
           // Per-user catalogs in platform mode: never let a shared cache serve
-          // one user's tool list to another.
-          "tools/list": options.platform ? { ttlMs: 60_000, cacheScope: "private" as const } : TOOL_LIST_CACHE_HINT,
-          "server/discover": DISCOVER_CACHE_HINT,
+          // one user's tool list — or their discovery metadata — to another.
+          "tools/list": options.platform ? PRIVATE_CACHE_HINT : TOOL_LIST_CACHE_HINT,
+          "server/discover": options.platform ? PRIVATE_CACHE_HINT : DISCOVER_CACHE_HINT,
         },
         instructions: lite
           ? "Aggregated MCP workstation (LITE catalog). Most tools are not listed to save " +
             "context: use hub_search_tools <query> to find them, hub_get_tool to inspect a " +
             "schema, and hub_call to invoke. workstation_status lists active modules. " +
             "Skills live in skills_list/skills_get."
-          : "Aggregated MCP workstation. Tools are prefixed by module/server key " +
-            "(e.g. github_*, fs_*, pg_*, crypto_*, weather_*). Run workstation_status to see " +
+          : "Aggregated MCP workstation. Built-in tools carry their module's own prefix " +
+            "(e.g. gh_*, fs_*, pg_*, crypto_*, weather_*); tools from your registered upstream " +
+            "servers are prefixed by that server's key. Run workstation_status to see " +
             "what is active, and skills_list to see the skills hub.",
       },
     );
@@ -701,12 +796,26 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
             required: ["tool"],
           }),
         },
-        (args) => {
+        async (args) => {
           const a = args as Record<string, unknown>;
           const name = String(a.tool ?? "");
           const def = hidden.get(name);
           if (!def) throw new Error(`Tool "${name}" not in catalog. Run hub_search_tools first.`);
-          return runTool(def, (a.arguments ?? {}) as Record<string, unknown>);
+          const callArgs = (a.arguments ?? {}) as Record<string, unknown>;
+          // Tools registered normally carry a Standard Schema the SDK validates
+          // against before the handler runs. hub_call only declares the outer
+          // {tool, arguments} shape, so without this every minimum/maximum/enum
+          // on a hidden tool would be unenforced on the search-first path.
+          const standard = toStandardSchema(def.inputSchema);
+          if (standard === undefined) return runTool(def, callArgs);
+          const outcome = await standard["~standard"].validate(callArgs);
+          if (outcome.issues !== undefined) {
+            const detail = outcome.issues
+              .map((i) => `${i.path === undefined ? "" : i.path.join(".")} ${i.message}`.trim())
+              .join("; ");
+            throw new Error(`Invalid arguments for "${name}": ${detail}`);
+          }
+          return runTool(def, (outcome.value ?? callArgs) as Record<string, unknown>);
         },
       );
     }
@@ -738,9 +847,10 @@ export function createWorkstation(options: WorkstationOptions = {}): Workstation
     const userId =
       typeof ctx.authInfo?.extra?.userId === "string" ? (ctx.authInfo.extra.userId as string) : undefined;
     if (options.platform && !userId) {
-      // Shouldn't happen — requireBearerAuth gates /mcp before the handler.
-      // Fall back to the shared catalog so the request still succeeds.
-      return createMcpInstance(shared, undefined);
+      // `requireBearerAuth` gates /mcp before the handler, so this is a bug or
+      // a bypass attempt — never serve the shared catalog, which is built with
+      // the operator's own env and would hand out their credentials.
+      throw new OAuthError(OAuthErrorCode.InvalidToken, "Authenticated user missing in platform mode");
     }
     return buildServerForUserInternal(userId);
   }, {

@@ -5,6 +5,19 @@ import type { PlatformAuth } from "./auth.js";
 import { mintToken } from "./tokens.js";
 import { allSkillNames, type Skill } from "./skills.js";
 import { decodeSecrets, encodeSecrets, encryptStringMap, serverDto, USER_OVERRIDABLE_ENV, USER_SECRETS } from "./serverConfig.js";
+import { allowedStdioCommands, stdioCommandAllowed } from "../config.js";
+
+/** stdio spawns run as the hub's own OS user, so the command must be allowlisted. */
+function stdioNotAllowed(command: string): Response {
+  const allowed = [...allowedStdioCommands()];
+  return json(400, {
+    error:
+      `Command "${command}" is not an allowed stdio server. ` +
+      (allowed.length > 0
+        ? `The operator permits only: ${allowed.join(", ")}`
+        : "User-registered stdio servers are disabled on this deployment (set STDIO_ALLOWED_COMMANDS to permit commands)."),
+  });
+}
 
 export interface ApiContext {
   db: PlatformDb;
@@ -230,6 +243,9 @@ async function createServer(request: Request, ctx: ApiContext, userId: string): 
   if (type === "stdio" && typeof body.command !== "string") {
     return json(400, { error: "stdio servers need a command" });
   }
+  if (type === "stdio" && !stdioCommandAllowed(String(body.command))) {
+    return stdioNotAllowed(String(body.command));
+  }
   if (type === "http" && typeof body.url !== "string") {
     return json(400, { error: "http servers need a url" });
   }
@@ -263,11 +279,15 @@ async function createServer(request: Request, ctx: ApiContext, userId: string): 
 async function patchServer(request: Request, ctx: ApiContext, userId: string, id: string): Promise<Response> {
   const { db } = ctx;
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!db.getServer(id, userId)) return json(404, { error: "Server not found" });
+  const existing = db.getServer(id, userId);
+  if (!existing) return json(404, { error: "Server not found" });
   const fields: Parameters<typeof db.updateServer>[2] = {};
   if (typeof body.enabled === "boolean") fields.enabled = body.enabled ? 1 : 0;
   if (typeof body.key === "string" && body.key.trim()) fields.key = body.key.trim();
-  if (typeof body.command === "string") fields.command = body.command;
+  if (typeof body.command === "string") {
+    if (existing.type === "stdio" && !stdioCommandAllowed(body.command)) return stdioNotAllowed(body.command);
+    fields.command = body.command;
+  }
   if (Array.isArray(body.args)) fields.args = JSON.stringify(body.args.map(String));
   if (typeof body.cwd === "string") fields.cwd = body.cwd;
   if (typeof body.url === "string") fields.url = body.url;
