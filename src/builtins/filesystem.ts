@@ -4,6 +4,10 @@ import type { ToolDef } from "../registry.js";
 import type { StorageScope } from "../scope.js";
 import { jsonResult, textResult } from "../result.js";
 import { str } from "../utils.js";
+import { runBounded } from "../bounded.js";
+
+/** Ceiling on a grep before it is killed; caller regexes are untrusted. */
+const GREP_TIMEOUT_MS = Math.max(Number(process.env.FS_SEARCH_TIMEOUT_MS ?? "") || 5000, 250);
 
 /** A sandbox: the roots one scope may touch, plus its containment resolver. */
 export interface Sandbox {
@@ -189,49 +193,52 @@ export function filesystemDefs(scope: StorageScope): ToolDef[] {
         },
         required: ["pattern"],
       },
-      handler: (args) => {
+      handler: async (args) => {
         const abs = resolve(str(args.path, defaultRoot));
-        let re: RegExp;
+        const pattern = str(args.pattern);
         try {
-          re = new RegExp(str(args.pattern));
+          new RegExp(pattern);
         } catch (err) {
-          throw new Error(`Invalid regex: ${err instanceof Error ? err.message : err}`);
+          throw new Error(`Invalid regex: ${err instanceof Error ? err.message : String(err)}`);
         }
         const max = Math.min(Math.max(Number(args.max_matches) || 200, 1), 500);
-        const matches: { file: string; line: number; text: string }[] = [];
-
-        const walk = (dir: string): void => {
-          if (matches.length >= max) return;
-          let entries: fs.Dirent[];
-          try {
-            entries = fs.readdirSync(dir, { withFileTypes: true });
-          } catch {
-            return;
-          }
-          for (const entry of entries) {
+        // Walked and matched on a bounded worker thread: a caller-supplied
+        // regex can be catastrophic, and a hung scan on the main thread stops
+        // the whole server for every user, not just this request.
+        const source = `
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { parentPort, workerData } = require("node:worker_threads");
+          const { root, pattern, max } = workerData;
+          const re = new RegExp(pattern);
+          const matches = [];
+          const walk = (dir) => {
             if (matches.length >= max) return;
-            if (entry.name === "node_modules" || entry.name === ".git") continue;
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-              walk(full);
-            } else if (entry.isFile()) {
-              let content: string;
-              try {
-                content = fs.readFileSync(full, "utf-8");
-              } catch {
-                continue; // binary/unreadable
-              }
-              const lines = content.split("\n");
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+              if (matches.length >= max) return;
+              if (entry.name === "node_modules" || entry.name === ".git") continue;
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) { walk(full); continue; }
+              if (!entry.isFile()) continue;
+              let content;
+              try { content = fs.readFileSync(full, "utf-8"); } catch { continue; }
+              const lines = content.split("\\n");
               for (let i = 0; i < lines.length && matches.length < max; i++) {
-                if (re.test(lines[i])) {
-                  matches.push({ file: full, line: i + 1, text: lines[i].slice(0, 300) });
-                }
+                if (re.test(lines[i])) matches.push({ file: full, line: i + 1, text: lines[i].slice(0, 300) });
               }
             }
-          }
-        };
-        walk(abs);
-        return jsonResult({ pattern: str(args.pattern), count: matches.length, matches });
+          };
+          walk(root);
+          parentPort.postMessage(matches);
+        `;
+        const matches = await runBounded<{ file: string; line: number; text: string }[]>(
+          source,
+          { root: abs, pattern, max },
+          { timeoutMs: GREP_TIMEOUT_MS, label: `File search for "${pattern}" timed out` },
+        );
+        return jsonResult({ pattern, count: matches.length, truncated: matches.length >= max, matches });
       },
     },
   ];

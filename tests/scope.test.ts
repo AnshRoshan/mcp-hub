@@ -186,3 +186,28 @@ test("sqlite binds one read-only database per scope", async () => {
   assert.throws(() => call(ma.defs, "sqlite_query", { sql: "DROP TABLE alice_t" }), /read-only mode/);
   assert.ok(tablesOf(ma).includes("alice_t"), "the read-only database must be unchanged");
 });
+
+test("fs_search still greps the sandbox after moving onto the bounded worker", async () => {
+  const scope = scopeAt("grep-functional");
+  const defs = filesystemDefs(scope);
+  fs.writeFileSync(path.join(scope.filesystemRoots[0], "a.txt"), "alpha\nneedle here\nomega\n");
+  fs.mkdirSync(path.join(scope.filesystemRoots[0], "sub"));
+  fs.writeFileSync(path.join(scope.filesystemRoots[0], "sub", "b.txt"), "needle again\n");
+
+  const result = (await find(defs, "fs_search").handler({ pattern: "needle" })) as CallToolResult;
+  const body = JSON.parse(result.content.map((c) => ("text" in c ? c.text : "")).join("")) as {
+    count: number;
+    matches: { file: string; line: number }[];
+  };
+  assert.equal(body.count, 2, "both the top-level file and the nested one match");
+  assert.deepEqual(body.matches.map((m) => m.line).sort(), [1, 2]);
+});
+
+test("fs_search refuses a pattern it cannot compile instead of starting a worker", async () => {
+  const scope = scopeAt("grep-invalid");
+  const defs = filesystemDefs(scope);
+  await assert.rejects(
+    find(defs, "fs_search").handler({ pattern: "(unclosed" }),
+    /Invalid regex/,
+  );
+});
