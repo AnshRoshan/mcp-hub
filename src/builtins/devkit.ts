@@ -1,4 +1,4 @@
-import { Worker } from "node:worker_threads";
+import { runBounded } from "../bounded.js";
 import type { ToolDef } from "../registry.js";
 import { jsonResult } from "../result.js";
 import { env, num, str } from "../utils.js";
@@ -50,27 +50,10 @@ async function matchWithTimeout(pattern: string, flags: string, sample: string):
     }
     parentPort.postMessage(out);
   `;
-  const worker = new Worker(source, {
-    eval: true,
-    workerData: { pattern, flags, sample, max: MAX_MATCHES + 1 },
+  return runBounded<RegexMatch[]>(source, { pattern, flags, sample, max: MAX_MATCHES + 1 }, {
+    timeoutMs: REGEX_TIMEOUT_MS,
+    label: "Regex evaluation timed out — the pattern is likely catastrophic backtracking on this input",
   });
-  try {
-    return await new Promise<RegexMatch[]>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(`Regex evaluation timed out after ${REGEX_TIMEOUT_MS}ms — the pattern is likely catastrophic backtracking on this input.`));
-      }, REGEX_TIMEOUT_MS);
-      worker.once("message", (matches) => {
-        clearTimeout(timer);
-        resolve(matches as RegexMatch[]);
-      });
-      worker.once("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
-  } finally {
-    await worker.terminate();
-  }
 }
 
 /* ---------------- diff ---------------- */
